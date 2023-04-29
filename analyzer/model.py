@@ -2,6 +2,9 @@
 
 import numpy as np
 import pandas as pd
+
+from scipy.stats import norm, invgamma
+from typing import Any
 import matplotlib.pyplot as plt
 import matplotlib.figure as figure
 
@@ -64,8 +67,8 @@ class Model:
 
         self.successes: list[int] = [0]
         self.failures: list[int] = [0]
-        self.success_probs: list[float] = [np.nan]
-        self.success_vars: list[float] = [np.nan]
+        self.success_probs: list[float] = [0.5]
+        self.success_vars: list[float] = [0.25]
 
     def log(self, ts, delta_rtt, delta_ttl, success) -> None:
         '''Log a new measurement.
@@ -132,8 +135,8 @@ class Model:
         
         # get data
         df = self.to_frame(omit_first=True)
-        prob_changes = (df["success_prob"].nunique()>1)
-        ttl_changes = (df["delta_ttl"].nunique() > 1)
+        prob_changes = (df["success_prob"].unique().shape[0] > 1)
+        ttl_changes = (df["delta_ttl"].unique().shape[0] > 1)
         n_axis = sum([1, prob_changes, ttl_changes])
         # create figure with 3 rows of subplots
         fig, axs = plt.subplots(n_axis, 1, sharex=True)
@@ -174,18 +177,30 @@ class Model:
             ax.set_ylabel("$P(\\mathrm{success})$")
             ax.set_title(f"Probability of success")
             ax.set_ylabel("$p$")
-            ax.set_ylim (max(0, lower_bound.min())-0.05, min(1, upper_bound.max())+0.05)
+            ax.set_ylim (max(0, lower_bound.min())-0.01, min(1, upper_bound.max())+0.01)
 
         if ttl_changes:
             # plot variance
             ax: plt.Axes = axs[-1]
-            df["delta_ttl"].plot(ax=ax, label="$\\Delta(\\mathrm{ttl})$", color='red')
+            df["delta_ttl"].plot(kind='line', ax=ax, label="$\\Delta(\\mathrm{ttl})$", color='red')
             ax.set_ylabel("$\\Delta(\\mathrm{ttl})")
             ax.set_title(f"TTL changes")
 
 
         return fig
 
+    def score(self, rtt, ttl, destination_reached) -> tuple[bool, float, float, float, float, float]:
+        rtt_is_outlier = rtt > self.mu + 3*self.sigma or rtt < self.mu - 3*self.sigma
+        rtt_prob = self.pdf(rtt) 
+        rtt_mu_diff = rtt - self.mu
+        success_prob = self.success_prob
+        success_score = destination_reached - self.success_prob
+        rtt_ttl_rate = rtt/ttl
+        return rtt_is_outlier, rtt_prob, rtt_mu_diff, success_prob, success_score, rtt_ttl_rate
+    
+    def pdf(self, x)->float:
+        return np.exp(-0.5*((x-self.mu)/self.sigma)**2)/(self.sigma*np.sqrt(2*np.pi))
+    
     @property
     def timestamp(self):
         return self.tss[-1] if self.tss else None
