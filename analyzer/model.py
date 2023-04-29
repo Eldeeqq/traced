@@ -1,4 +1,4 @@
-'''Model for a single traceroute.'''
+'''Model for a single edge in graph.'''
 
 import numpy as np
 import pandas as pd
@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.figure as figure
 
 class Model:
-    '''Model for a single traceroute.
+    '''Model for a single edge in graph.
     
     Attributes:
         u (str): source
@@ -134,52 +134,55 @@ class Model:
         df = self.to_frame(omit_first=True)
         prob_changes = (df["success_prob"].nunique()>1)
         ttl_changes = (df["delta_ttl"].nunique() > 1)
+        n_axis = sum([1, prob_changes, ttl_changes])
         # create figure with 3 rows of subplots
-        fig, axs = plt.subplots(sum([1, prob_changes, ttl_changes]), 1, sharex=True)
-        axs = axs.ravel()
-        fig.set_size_inches(15, 9)
-        fig.suptitle(f"Statistics {self.u} -> {self.v}")
-        # TODO: split figures
+        fig, axs = plt.subplots(n_axis, 1, sharex=True)
 
-        if not prob_changes:
-            axs = (axs, axs, axs)
+        # fig = plt.figure()
+        fig.suptitle(f"Statistics {self.u} -> {self.v}")
+        fig.set_size_inches(15, 9)
+
+        ax: plt.Axes = axs[0] if n_axis > 1 else axs # type: ignore
 
         # render anomaly plot
         mu_plus_3sigma = df["mu"] + 3*df["sigma"]
         mu_minus_3sigma = df["mu"] - 3*df["sigma"]
 
-        mu_plus_3sigma.plot(ax=axs[0], color='green', alpha=0.5) 
-        mu_minus_3sigma.plot(ax=axs[0], color='green',label='$\\pm3\\sigma$', alpha=0.5)
+        ax.fill_between(df.index, mu_plus_3sigma, mu_minus_3sigma, color='green', alpha=0.1) # type: ignore
 
-        (mu_plus_3sigma + df["sigma"]).plot(ax=axs[0], color='purple', alpha=0.5)
-        (mu_minus_3sigma - df["sigma"]).plot(ax=axs[0], color='purple', label='$\\pm4\\sigma$', alpha=0.5)
+        (mu_plus_3sigma + df["sigma"]).plot(ax=ax, color='purple', alpha=0.5)
+        (mu_minus_3sigma - df["sigma"]).plot(ax=ax, color='purple', label='$\\pm4\\sigma$', alpha=0.5)
 
-        df['delta_rtt'].plot(ax=axs[0], label="$\\Delta\\mathrm{rtt}$")
-        df["mu"].plot(ax=axs[0], label="$\\mathbb{E}(rtt)$")
+        df['delta_rtt'].plot(ax=ax, label="$\\Delta\\mathrm{rtt}$")
+        df["mu"].plot(ax=ax, label="$\\mathbb{E}(rtt)$")
 
         anomalies = df[(mu_minus_3sigma >= df["delta_rtt"]) | (df["delta_rtt"] >= mu_plus_3sigma)]
-        anomalies.plot(y="delta_rtt", ax=axs[0], color="red", marker='o', linestyle = 'None', label="anomaly")  
-        
+        anomalies.plot(y="delta_rtt", ax=ax, color="red", marker='o', linestyle = 'None', label="anomaly")  
           
-        axs[0].set_title(f"Anomalies on RTT ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)")
-        axs[0].legend(loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=5, fancybox=True)  
-        axs[0].set_xlabel("time")
-        axs[0].set_ylabel("$\\Delta\\mathrm{rtt}$")
+        ax.set_title(f"Anomalies on RTT ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)")
+        ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=5, fancybox=True)  
+        ax.set_xlabel("time")
+        ax.set_ylabel("$\\Delta\\mathrm{rtt}$")
 
         if prob_changes:
-
             # plot probability
-            df["success_prob"].plot(ax=axs[1], label="$P(\\mathrm{success})$", color='green')
-            (df['success_prob']+3*df["success_var"].apply(np.sqrt)).plot(ax=axs[1], label="$\\sigma(\\mathrm{success})$", color='orange')
-
-            axs[2].set_title(f"Probability of success")
-            axs[1].set_ylabel("$p$")
+            ax: plt.Axes = axs[1]
+            df["success_prob"].plot(ax=ax, label="$P(\\mathrm{success})$", color='green')
+            upper_bound = df["success_prob"] + 3*df["success_var"].apply(np.sqrt)
+            lower_bound = df["success_prob"] - 3*df["success_var"].apply(np.sqrt)
+            ax.fill_between(df.index, lower_bound, upper_bound, color='gray', alpha=0.2) # type: ignore
+            ax.set_ylabel("$P(\\mathrm{success})$")
+            ax.set_title(f"Probability of success")
+            ax.set_ylabel("$p$")
+            ax.set_ylim (max(0, lower_bound.min())-0.05, min(1, upper_bound.max())+0.05)
 
         if ttl_changes:
             # plot variance
-            df["delta_ttl"].plot(ax=axs[2], label="$\\Delta(\\mathrm{ttl})$", color='red')
-            axs[2].set_ylabel("$\\Delta(\\mathrm{ttl})")
-            axs[2].set_title(f"TTL changes")
+            ax: plt.Axes = axs[-1]
+            df["delta_ttl"].plot(ax=ax, label="$\\Delta(\\mathrm{ttl})$", color='red')
+            ax.set_ylabel("$\\Delta(\\mathrm{ttl})")
+            ax.set_title(f"TTL changes")
+
 
         return fig
 
