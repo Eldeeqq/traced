@@ -4,11 +4,12 @@ from hashlib import sha1
 from collections import defaultdict
 from typing import Iterable
 import numpy as np
-from analyzer.model import Model
 from typing import Any
 import pandas as pd
 import seaborn as sns
 import tqdm
+
+from trct.models.normal_model import NormalModel
 
 
 class TraceAnalyzer:
@@ -16,7 +17,7 @@ class TraceAnalyzer:
         self.G: nx.Graph = nx.DiGraph()
         self.files: Iterable[str] = files
         self.hash_trace: dict[str, tuple[str, str, list[str]]] = {}
-        self.models: dict[tuple[str, str], Model] = {}
+        self.models: dict[tuple[str, str], NormalModel] = {}
         self.hash_counter: dict[str, int] = defaultdict(lambda: 0)
         self.markov_probs: dict[str, dict[str, float]] = defaultdict(
             lambda: defaultdict(lambda: 1)
@@ -61,11 +62,11 @@ class TraceAnalyzer:
             with open(f"{folder}/{file.split('/')[-1]}", "w") as f:
                 json.dump(json_data, f)
 
-    def get_edge_model(self, u, v) -> Model:
+    def get_edge_model(self, u, v) -> NormalModel:
         self.markov_probs[u][v] += 1
         if (u, v) not in self.models:
             self.G.add_edge(u, v)
-            self.models[(u, v)] = Model(u, v)
+            self.models[(u, v)] = NormalModel(u, v)
         return self.models[(u, v)]
 
     def get_probs(self, node, scale=False):
@@ -89,6 +90,7 @@ class TraceAnalyzer:
         src = data["src"]
         dest = data["dest"]
         hops = data["hops"]
+        asns = data["asns"]
         ts = data["timestamp"]
 
         self.src_dest_freq[src][dest] += 1
@@ -99,31 +101,22 @@ class TraceAnalyzer:
         self.hash_counter[route_hash] += 1
         self.hash_trace[route_hash] = (src, dest, hops)
 
-        # hop_gen = iter(hops)
-        # ttl_gen = iter(np.diff(np.array(data['ttls']), prepend=0))
-        # rtt_gen = iter(np.diff(np.array(data['rtts']), prepend=0))
-
         scores = []
+        prev = src
 
         for (
             node,
+            asn,
             ttl,
             rtt,
-        ) in zip(hops, data["ttls"], data["rtts"]):
+        ) in zip(hops, asns, data["ttls"], data["rtts"]):
             model = self.get_edge_model(src, node)
-            scores.append(model.score(rtt, ttl, data["destination_reached"]))
-            model.log(ts, rtt, ttl, data["destination_reached"])
+            scores.append(model.score(rtt))
+            model.log(ts, rtt)
+            prev = node
 
         self.scores[route_hash][ts] = np.array(scores).T
-        # curr = src
-        # while True:
-        #     try:
-        #         next_hop = next(hop_gen)
-        #         model = self.get_edge_model(curr, next_hop)
-        #         model.log(data["timestamp"], next(rtt_gen), next(ttl_gen), data['destination_reached'])
-        #         curr = next_hop
-        #     except StopIteration:
-        #         break
+
         return np.array(scores).T
 
     def src_dest_hist(self):
