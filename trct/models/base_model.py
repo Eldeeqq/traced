@@ -2,8 +2,9 @@
 
 from abc import ABC, abstractmethod
 from typing import Any
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 class BaseModel:

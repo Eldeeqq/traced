@@ -1,14 +1,14 @@
 """Bernoulli model for bayesian inference."""
 
+from typing import Any
+
+import matplotlib.figure as figure
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.stats import invgamma, norm
 
-from scipy.stats import norm, invgamma
-from typing import Any
-import matplotlib.pyplot as plt
-import matplotlib.figure as figure
-
-from analyzer.models.base_model import BaseModel
+from trct.models.base_model import BaseModel
 
 
 class BernoulliModel(BaseModel):
@@ -53,12 +53,12 @@ class BernoulliModel(BaseModel):
 
     def get_data(self) -> dict[str, list[Any]]:
         return {
-                "successes": self.successes,
-                "failures": self.failures,
-                "success_prob": self.success_probs,
-                "success_var": self.success_vars,
-            }
-    
+            "successes": self.successes,
+            "failures": self.failures,
+            "success_prob": self.success_probs,
+            "success_var": self.success_vars,
+        }
+
     def probability_changes(self) -> bool:
         """Return whether the probability has changed."""
         seen = set()

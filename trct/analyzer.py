@@ -1,15 +1,17 @@
-import networkx as nx
 import json
-from hashlib import sha1
 from collections import defaultdict
-from typing import Iterable
+from hashlib import sha1
+from typing import Any, Iterable
+
+import networkx as nx
 import numpy as np
-from typing import Any
 import pandas as pd
 import seaborn as sns
 import tqdm
 
 from trct.models.normal_model import NormalModel
+
+# TODO: add normal model on RTTs, add Bernoulli model on success and destination reached, create a new model for TTLs + hash trace and Markov paths
 
 
 class TraceAnalyzer:

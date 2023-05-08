@@ -1,24 +1,23 @@
+from typing import Any
+
+import matplotlib.figure as figure
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-from scipy.stats import norm, invgamma
-from typing import Any
-import matplotlib.pyplot as plt
-import matplotlib.figure as figure
+from scipy.stats import invgamma, norm
 
 from trct.models.base_model import BaseModel
 
 
 class NormalModel(BaseModel):
     def __init__(self, u, v, alpha_0=1, beta_0=1, mu_0=5, sigma_0=2):
-
         super().__init__(u, v)
-        
+
         self.alphas: list[float] = [alpha_0]
         self.betas: list[float] = [beta_0]
         self.mus: list[float] = [mu_0]
         self.sigmas: list[float] = [sigma_0]
-        
+
         self.observed_variables: list[float] = [0]
         self.upper_bound: list[float] = [0]
         self.lower_bound: list[float] = [0]
@@ -36,15 +35,15 @@ class NormalModel(BaseModel):
 
     def get_data(self):
         return {
-                "observed":self.observed_variables ,
-                "ts": self.tss,
-                "alpha": self.alphas,
-                "beta": self.betas,
-                "mu": self.mus,
-                "sigma": self.sigmas,
-                'upper_bound': self.upper_bound,
-                'lower_bound': self.lower_bound
-            }
+            "observed": self.observed_variables,
+            "ts": self.tss,
+            "alpha": self.alphas,
+            "beta": self.betas,
+            "mu": self.mus,
+            "sigma": self.sigmas,
+            "upper_bound": self.upper_bound,
+            "lower_bound": self.lower_bound,
+        }
 
     def plot(self, axes, **kwargs) -> None:
         """Plot the model statistics."""
@@ -53,30 +52,49 @@ class NormalModel(BaseModel):
         # get data
         df = self.to_frame(omit_first=True)
         if "resample" in kwargs:
-            df = df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean()
+            df = (
+                df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean()
+            )
         df["mu"].plot(axes=axes, label="$\\mathbb{E}(X)$")
 
         axes.fill_between(df.index, df["lower_bound"], df["upper_bound"], facecolor="gray", alpha=0.3)  # type: ignore
-     
 
-        df["lower_bound"].plot(ax=axes, color="purple", label="$\\pm3\\sigma$", alpha=0.5)
-        df["upper_bound"].plot(ax=axes, color="purple", label="$\\pm3\\sigma$", alpha=0.5)
+        df["lower_bound"].plot(
+            ax=axes, color="purple", label="$\\pm3\\sigma$", alpha=0.5
+        )
+        df["upper_bound"].plot(
+            ax=axes, color="purple", label="$\\pm3\\sigma$", alpha=0.5
+        )
         df["observed"].plot(axes=axes, label="X")
 
-        anomalies = df[(df["lower_bound"] >= df["observed"]) | (df["observed"] >= df["upper_bound"])]
+        anomalies = df[
+            (df["lower_bound"] >= df["observed"])
+            | (df["observed"] >= df["upper_bound"])
+        ]
         if anomalies.shape[0] > 0:
-            anomalies.plot(y="observed",ax=axes,color="red",marker="o",linestyle="None",label="anomaly")
+            anomalies.plot(
+                y="observed",
+                ax=axes,
+                color="red",
+                marker="o",
+                linestyle="None",
+                label="anomaly",
+            )
 
-        axes.set_title(f"Anomalies on RTT ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)")
-        axes.legend(loc="lower center", bbox_to_anchor=(0.5, -0.15), ncol=5, fancybox=True)
+        axes.set_title(
+            f"Anomalies on RTT ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)"
+        )
+        axes.legend(
+            loc="lower center", bbox_to_anchor=(0.5, -0.15), ncol=5, fancybox=True
+        )
         axes.set_xlabel("time")
         axes.set_ylabel("X")
 
     def score(self, observed_variable) -> tuple[bool, float, float]:
-        rtt_is_outlier = (observed_variable > self.ub or observed_variable < self.lb)
+        rtt_is_outlier = observed_variable > self.ub or observed_variable < self.lb
         rtt_prob = self.pdf(observed_variable)
         rtt_mu_diff = observed_variable - self.mu
-        return rtt_is_outlier, rtt_prob, rtt_mu_diff  
+        return rtt_is_outlier, rtt_prob, rtt_mu_diff
 
     def pdf(self, x) -> float:
         return np.exp(-0.5 * ((x - self.mu) / self.sigma) ** 2) / (
@@ -150,12 +168,12 @@ class NormalModel(BaseModel):
     @property
     def ub(self):
         return self.upper_bound[-1]
-    
+
     @ub.setter
     def ub(self, ub):
         self.upper_bound.append(ub)
 
-    @property   
+    @property
     def lb(self):
         return self.lower_bound[-1]
 
