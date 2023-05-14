@@ -10,7 +10,7 @@ import pandas as pd
 class BaseModel:
     """Base class for all models."""
 
-    def __init__(self, src: str, dest: str, *args, **kwargs) -> None:
+    def __init__(self, src: str, dest: str) -> None:
         """Initialize a new model.
 
         Args:

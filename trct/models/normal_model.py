@@ -21,6 +21,7 @@ class NormalModel(BaseModel):
         self.observed_variables: list[float] = [0]
         self.upper_bound: list[float] = [0]
         self.lower_bound: list[float] = [0]
+        self.anomalies: list[bool] = [False]
 
     def log(self, ts, obsedved_variable) -> None:
         """Log a new observation."""
@@ -43,6 +44,7 @@ class NormalModel(BaseModel):
             "sigma": self.sigmas,
             "upper_bound": self.upper_bound,
             "lower_bound": self.lower_bound,
+            'anomalies': self.anomalies
         }
 
     def plot(self, axes, **kwargs) -> None:
@@ -55,22 +57,20 @@ class NormalModel(BaseModel):
             df = (
                 df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean()
             )
+            
         df["mu"].plot(axes=axes, label="$\\mathbb{E}(X)$")
 
-        axes.fill_between(df.index, df["lower_bound"], df["upper_bound"], facecolor="gray", alpha=0.3)  # type: ignore
+        axes.fill_between(df.index, df["lower_bound"], df["upper_bound"], facecolor="gray", alpha=0.3) # type: ignore
 
         df["lower_bound"].plot(
             ax=axes, color="purple", label="$\\pm3\\sigma$", alpha=0.5
         )
         df["upper_bound"].plot(
-            ax=axes, color="purple", label="$\\pm3\\sigma$", alpha=0.5
+            ax=axes, color="purple", alpha=0.5
         )
         df["observed"].plot(axes=axes, label="X")
 
-        anomalies = df[
-            (df["lower_bound"] >= df["observed"])
-            | (df["observed"] >= df["upper_bound"])
-        ]
+        anomalies = df[df["anomalies"]]
         if anomalies.shape[0] > 0:
             anomalies.plot(
                 y="observed",
@@ -84,9 +84,7 @@ class NormalModel(BaseModel):
         axes.set_title(
             f"Anomalies on RTT ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)"
         )
-        axes.legend(
-            loc="lower center", bbox_to_anchor=(0.5, -0.15), ncol=5, fancybox=True
-        )
+        axes.legend(fancybox=True)
         axes.set_xlabel("time")
         axes.set_ylabel("X")
 
@@ -156,6 +154,7 @@ class NormalModel(BaseModel):
         self.sigma = np.sqrt(self.beta / (self.alpha + 1))
         self.ub = self.mu + 3 * self.sigma
         self.lb = self.mu - 3 * self.sigma
+        self.anomaly = value > self.ub or value < self.lb
 
     @property
     def n(self):
@@ -180,3 +179,11 @@ class NormalModel(BaseModel):
     @lb.setter
     def lb(self, lb):
         self.lower_bound.append(lb)
+
+    @property
+    def anomaly(self):
+        return self.anomalies[-1]
+    
+    @anomaly.setter
+    def anomaly(self, anomaly):
+        self.anomalies.append(anomaly)
