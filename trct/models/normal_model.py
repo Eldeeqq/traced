@@ -66,7 +66,7 @@ class NormalModel(BaseModel):
             ax=axes, color="purple", label="$\\pm3\\sigma$", alpha=0.5
         )
         df["upper_bound"].plot(
-            ax=axes, color="purple", alpha=0.5
+            ax=axes, color="purple", alpha=0.5, label="_nolegend_"
         )
         df["observed"].plot(axes=axes, label="X")
 
@@ -83,6 +83,7 @@ class NormalModel(BaseModel):
 
         axes.set_title(
             f"Anomalies on RTT ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)"
+            f"\n {self.u}->{self.v} "
         )
         axes.legend(fancybox=True)
         axes.set_xlabel("time")

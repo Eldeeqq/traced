@@ -11,8 +11,6 @@ import tqdm
 
 from trct.models.normal_model import NormalModel
 
-# TODO: add normal model on RTTs, add Bernoulli model on success and destination reached, create a new model for TTLs + hash trace and Markov paths
-
 
 class TraceAnalyzer:
     def __init__(self, files):

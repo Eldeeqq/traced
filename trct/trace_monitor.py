@@ -1,5 +1,6 @@
 import numpy as np
 import json
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from trct.models.normal_model import NormalModel
@@ -23,14 +24,16 @@ class TraceMonitor:
         self.destination_reached_model: BernoulliModel = BernoulliModel(u, v)
 
     def process(self, files):
-        for file in files:
+        for file in tqdm(files):
             with open(file, "r") as f:
                 json_data = json.load(f)
             self.log(json_data)
     
     def log(self, data):
         ts = data["timestamp"]
-        
+        if not data["n_hops"]:
+            #TODO: mark as anomaly?
+            return
         # destination_reached = data["destination_reached"]
         
         self.hops_ip_model.log(ts, data["hops"])

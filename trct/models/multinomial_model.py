@@ -105,11 +105,11 @@ class MultinomialModel(BaseModel):
                 label="anomaly",
             )
         axes.set_title(f"TTL for {self.u} -> {self.v} ({anomalies.shape[0]}, {anomalies.shape[0]/df.shape[0]:.2f})")
-        axes.legend()
+        axes.legend(fancybox=True, loc=0)
 
     def score(self, ttl) -> Any:
         """Score the traceroute data."""
-        return self.pdf(ttl) < 0.05
+        return self.pdf(ttl) < 0.025
 
     def pdf(self, ttl) -> Any:
         """Return the probability of the ttl."""

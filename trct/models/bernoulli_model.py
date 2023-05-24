@@ -80,16 +80,15 @@ class BernoulliModel(BaseModel):
             del kwargs["resample"]
 
         # https://stats.stackexchange.com/questions/4756/confidence-interval-for-bernoulli-sampling
-        bound = (df["success_var"] / df["total"]).apply(np.sqrt)
+        bound = 3*(df["success_var"]).apply(np.sqrt)
 
         upper_bound = df["success_prob"] + bound
         lower_bound = df["success_prob"] - bound
+        df["success_prob"].plot(ax=axes, label="$P(\\mathrm{success})$", color="green")
 
         axes.fill_between(df.index, lower_bound, upper_bound, facecolor="gray", alpha=0.3)  # type: ignore
         axes.plot(upper_bound, color="gray", alpha=0.3)  # type: ignore
         axes.plot(lower_bound, color="gray", alpha=0.3)  # type: ignore
-
-        df["success_prob"].plot(ax=axes, label="$P(\\mathrm{success})$", color="green")
 
         axes.set_ylabel("$P(\\mathrm{success})$")
         axes.set_title(f"Probability of success")

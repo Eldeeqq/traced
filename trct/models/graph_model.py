@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict, OrderedDict
+import copy
+from hashlib import sha1
 from typing import Any, Dict, Iterable, List, Set, Tuple
 
 import matplotlib.pyplot as plt
@@ -18,21 +20,32 @@ class GraphModel(BaseModel):
         self.edges = set()
 
         self.node_to_index: dict[str, int] = defaultdict(lambda: len(self.nodes))
-
         self.counts = defaultdict(lambda: defaultdict(lambda: 0))
-
         self.node_out_counts = defaultdict(lambda: 0)
-        self.node_edge_count_fraction: list[float] = [0.0]
 
         idx = self.node_to_index[self.u]
         self.nodes[self.u] = idx
+
+        self.local_probs: list[float] = [0]
+        self.global_probs: list[float] = [0]
+        self.weighted_probs: list[float] = [0]
+        self.ctr = 0
+        self._empty_counter = [0]
+        self.unique_paths = []
 
     def log(self, ts, hops):
         super().log(ts)
 
         curr = self.u
 
+        local_prob: list[float] = []
+        global_prob: list[float] = []
+        wighted_prob: list[float] = []
+
+        self.path = sha1('-'.join(map(str, hops)).encode('utf-8')).hexdigest( ) # type: ignore
+
         for node in hops:
+            self.ctr += 1
             idx = self.node_to_index[node]
             self.nodes[node] = idx
 
@@ -40,21 +53,38 @@ class GraphModel(BaseModel):
 
             self.node_out_counts[curr] += 1
             self.counts[curr][node] += 1
+
+            local_prob.append((1+self.counts[curr][node]) / (1+self.node_out_counts[curr])) 
+
+            global_prob.append(
+                  (1+self.counts[curr][node])/(self.ctr+1)
+            )
+            wighted_prob.append(global_prob[-1]*local_prob[-1])
+
+            # global_prob.append((1+self.counts[self.u][node]) / (1+self.n/len(self.edges)))
             curr = node
 
-        self.nef = len(self.nodes) / len(self.edges)
+        self.local_prob = np.prod(local_prob) # type: ignore
+        self.global_prob = np.prod(global_prob)  # type: ignore
+        self.weighted_prob = np.min(wighted_prob) # type: ignore
+
 
     def score(self, hops):
         curr = self.u
-        score = []
+        local_prob: list[float] = []
+        global_prob: list[float] = []
+        wighted_prob: list[float] = []
 
         for node in hops:
-            node_transition_prob = self.counts[curr][node] / self.node_out_counts[curr]
-            global_transition_prob = self.counts[self.u][node] / self.n
-            score.append([node_transition_prob, global_transition_prob, self.nef])
+            local_prob.append(self.counts[curr][node] / self.node_out_counts[curr]) 
+            global_prob.append(self.counts[curr][node] / self.n)
+            # score.append([node_transition_prob, global_transition_prob])
+            global_prob.append(global_prob[-1]*local_prob[-1])
+            
             curr = node
-
-        return score
+        self.local_probs = np.prod(local_prob) # type: ignore
+        self.global_probs = np.prod(global_prob) # type: ignore
+        return local_prob, global_prob
 
     def __repr__(self):
         return f"{self.u} -> {self.v} (#{self.n} Graph)"
@@ -74,11 +104,16 @@ class GraphModel(BaseModel):
 
     def get_data(self) -> dict[str, list[Any]]:
         """Return the model data."""
-        return {"nef": self.node_edge_count_fraction}
+        return {
+            'local_probs': self.local_probs,
+            'global_probs': self.global_probs,
+            'weighted_probs': self.weighted_probs,
+        }
 
     def plot(self, axes: plt.Axes, *args, **kwargs) -> None:
         """Plot the model on specified axis."""
-        axes.plot(self.tss, self.node_edge_count_fraction, *args, **kwargs)
+        axes.plot( self.global_probs, label='global prob', *args, **kwargs)
+        axes.plot( self.local_probs, label='makrov prob', *args, **kwargs)
         axes.set_xlabel("Time")
         axes.set_ylabel("Node/Edge Fraction")
 
@@ -108,14 +143,50 @@ class GraphModel(BaseModel):
             node_edge_color=colors,
             node_labels={x: i for i, x in enumerate(graph.nodes)},
             node_shape={x: tier_mapping[x] for x in graph.nodes},  # so^>v<dph8
-            edge_cmap="PRGn",
+            edge_cmap="RdYlGn",
+            node_layout=kwargs["node_layout"],
             axes=axes,
-        )
+        ) if 'node_layout' in kwargs else ng.Graph(
+            graph,
+            layout="dot",
+            arrows=True,
+            weighted=True,
+            # node_color={x:colors[x] for x in g.nodes}, # TODO: this based on src/dest/normal
+            node_edge_color=colors,
+            node_labels={x: i for i, x in enumerate(graph.nodes)},
+            node_shape={x: tier_mapping[x] for x in graph.nodes},  # so^>v<dph8
+            edge_cmap="RdYlGn",
+            axes=axes
+            )
+    
+    @property
+    def global_prob(self):
+        return self.global_probs[-1]
+    
+    @global_prob.setter
+    def global_prob(self, value):
+        self.global_probs.append(value)
 
     @property
-    def nef(self) -> float:
-        return self.node_edge_count_fraction[-1]
+    def local_prob(self):
+        return self.local_probs[-1]
+    
+    @local_prob.setter
+    def local_prob(self, value):
+        self.local_probs.append(value)
 
-    @nef.setter
-    def nef(self, value):
-        self.node_edge_count_fraction.append(value)
+    @property
+    def path(self):
+        return self.unique_paths
+    
+    @path.setter
+    def path(self, value):
+        self.unique_paths.append((self.ts, value))
+
+    @property
+    def weighted_prob(self):
+        return self.weighted_probs[-1]
+    
+    @weighted_prob.setter
+    def weighted_prob(self, value):
+        self.weighted_probs.append(value)
