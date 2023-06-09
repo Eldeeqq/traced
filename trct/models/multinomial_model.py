@@ -33,6 +33,10 @@ class MultinomialModel(BaseModel):
             lambda: copy.deepcopy(self.undef_prob)
         )
         self.ttls: list[int] = [0]
+        self.ttl_prob: list[float] = [] #TODO add 0 abd propagate to df
+        self.max_ttl_prob: list[float] = [] #TODO add 0 abd propagate to df
+        self.expected_val: list[float] = []
+        self.most_probable_ttl: list[float] = []
         self.anomalies: list[bool] = [False]
         self.anomalies_y: list[float] = [0.0]
 
@@ -104,6 +108,7 @@ class MultinomialModel(BaseModel):
                 linestyle="None",
                 label="anomaly",
             )
+        plt.plot(df.index, self.ttl_prob, label="ttl", color="black", linestyle="dashed")
         axes.set_title(f"TTL for {self.u} -> {self.v} ({anomalies.shape[0]}, {anomalies.shape[0]/df.shape[0]:.2f})")
         axes.legend(fancybox=True, loc=0)
 
@@ -126,7 +131,9 @@ class MultinomialModel(BaseModel):
 
         self.anomalies.append(self.score(ttl))
         self.anomalies_y.append(self.posterior_probs[ttl][-1])
-
+        tmp = 0
+        index  = -1
+        max_prob = 0
         for key in self.seen:
             new_count = self.counts[key][-1] + int(key == ttl)
             self.counts[key].append(new_count)
@@ -135,11 +142,17 @@ class MultinomialModel(BaseModel):
             self.marginal_var[key].append(marginal_prob * (1 - marginal_prob))
 
             self.posterior_probs[key].append((new_count + 1) / (self.n + self.k))
+            index = index if max_prob > self.posterior_probs[key][-1] else key
 
+            max_prob = max(max_prob, self.posterior_probs[key][-1])
+            tmp += self.posterior_probs[key][-1] * key
             p = self.marginal_probs[key][-1]
             var = p * (1 - p) / (self.n + 1)
             self.posterior_var[key].append(var)
-
+        self.ttl_prob.append(self.posterior_probs[ttl][-1])
+        self.expected_val.append(tmp)
+        self.max_ttl_prob.append(max_prob)
+        self.most_probable_ttl.append(index)
         self.undef.append(self.undef[-1])
         self.undef_prob.append(self.undef_prob[-1])
 

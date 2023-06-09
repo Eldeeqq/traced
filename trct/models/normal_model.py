@@ -10,13 +10,15 @@ from trct.models.base_model import BaseModel
 
 
 class NormalModel(BaseModel):
-    def __init__(self, u, v, alpha_0=1, beta_0=1, mu_0=5, sigma_0=2):
+    def __init__(self, u, v, alpha_0=1, beta_0=1, mu_0=5, sigma_0=2, one_sided=False, gamma:float=1):
         super().__init__(u, v)
 
         self.alphas: list[float] = [alpha_0]
         self.betas: list[float] = [beta_0]
         self.mus: list[float] = [mu_0]
         self.sigmas: list[float] = [sigma_0]
+        self.gamma = gamma
+        self.one_sided: bool = one_sided
 
         self.observed_variables: list[float] = [0]
         self.upper_bound: list[float] = [0]
@@ -49,9 +51,7 @@ class NormalModel(BaseModel):
 
     def plot(self, axes, **kwargs) -> None:
         """Plot the model statistics."""
-        # ignore type checks
 
-        # get data
         df = self.to_frame(omit_first=True)
         if "resample" in kwargs:
             df = (
@@ -71,6 +71,7 @@ class NormalModel(BaseModel):
         df["observed"].plot(axes=axes, label="X")
 
         anomalies = df[df["anomalies"]]
+        
         if anomalies.shape[0] > 0:
             anomalies.plot(
                 y="observed",
@@ -85,6 +86,10 @@ class NormalModel(BaseModel):
             f"Anomalies on RTT ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)"
             f"\n {self.u}->{self.v} "
         )
+
+        if 'start' in kwargs:
+            axes.axvline(kwargs['start'], color='gray', linestyle='--', label='training end')
+
         axes.legend(fancybox=True)
         axes.set_xlabel("time")
         axes.set_ylabel("X")
@@ -148,14 +153,14 @@ class NormalModel(BaseModel):
     def observed_variable(self, value):
         self.observed_variables.append(value)
 
-        self.alpha = self.alpha + 1 / 2
-        self.beta = self.beta + 0.5 * (value - self.mu) ** 2
+        self.alpha += self.gamma * 1 / 2
+        self.beta += self.gamma * 0.5 * (value - self.mu) ** 2
 
-        self.mu = self.mu + 1 / self.n * (value - self.mu)
-        self.sigma = np.sqrt(self.beta / (self.alpha + 1))
+        self.mu += self.gamma / self.n * (value - self.mu)
+        self.sigma = self.gamma * np.sqrt(self.beta / (self.alpha + 1))
         self.ub = self.mu + 3 * self.sigma
         self.lb = self.mu - 3 * self.sigma
-        self.anomaly = value > self.ub or value < self.lb
+        self.anomaly = value > self.ub or value < self.lb if not self.one_sided else value > self.ub
 
     @property
     def n(self):

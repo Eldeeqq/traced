@@ -3,6 +3,8 @@ from collections import defaultdict, OrderedDict
 import copy
 from hashlib import sha1
 from typing import Any, Dict, Iterable, List, Set, Tuple
+from collections import Counter
+
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -10,7 +12,7 @@ import netgraph as ng
 import numpy as np
 
 from trct.models.base_model import BaseModel
-
+from trct.models.normal_model import NormalModel
 
 class GraphModel(BaseModel):
     def __init__(self, src, dest):
@@ -22,6 +24,9 @@ class GraphModel(BaseModel):
         self.node_to_index: dict[str, int] = defaultdict(lambda: len(self.nodes))
         self.counts = defaultdict(lambda: defaultdict(lambda: 0))
         self.node_out_counts = defaultdict(lambda: 0)
+        self.node_in_counts = defaultdict(lambda: 0)
+        self.node_depth_counts: Dict[int, Counter[str]] = defaultdict(lambda: Counter())
+        # self.node_depth_probs: Dict[int, Dict[str, int]] = defaultdict(lambda: Counter())
 
         idx = self.node_to_index[self.u]
         self.nodes[self.u] = idx
@@ -29,9 +34,16 @@ class GraphModel(BaseModel):
         self.local_probs: list[float] = [0]
         self.global_probs: list[float] = [0]
         self.weighted_probs: list[float] = [0]
+
         self.ctr = 0
         self._empty_counter = [0]
-        self.unique_paths = []
+        self.unique_paths:list[str] = ['']
+
+        self.local_anomaly_model = NormalModel(self.u, self.v, one_sided=True)
+        self.global_anomaly_model = NormalModel(self.u, self.v, one_sided=True)
+        self.weighted_anomaly_model = NormalModel(self.u, self.v, one_sided=True)
+        self.node_prob_edge_prob = NormalModel(self.u, self.v, one_sided=True)
+
 
     def log(self, ts, hops):
         super().log(ts)
@@ -41,20 +53,26 @@ class GraphModel(BaseModel):
         local_prob: list[float] = []
         global_prob: list[float] = []
         wighted_prob: list[float] = []
-
+        node_probs: list[float]= []
         self.path = sha1('-'.join(map(str, hops)).encode('utf-8')).hexdigest( ) # type: ignore
+        self.node_in_counts[curr] += 1
 
-        for node in hops:
+        for i, node in enumerate(hops):
             self.ctr += 1
             idx = self.node_to_index[node]
             self.nodes[node] = idx
-
+            self.node_in_counts[node] += 1
             self.edges.add((curr, node))
 
             self.node_out_counts[curr] += 1
             self.counts[curr][node] += 1
 
             local_prob.append((1+self.counts[curr][node]) / (1+self.node_out_counts[curr])) 
+
+            self.node_depth_counts[i][curr] += 1
+            node_probs.append(
+                local_prob[-1]* self.node_depth_counts[i][curr]/ self.node_depth_counts[i].total()
+            )
 
             global_prob.append(
                   (1+self.counts[curr][node])/(self.ctr+1)
@@ -66,14 +84,20 @@ class GraphModel(BaseModel):
 
         self.local_prob = np.prod(local_prob) # type: ignore
         self.global_prob = np.prod(global_prob)  # type: ignore
-        self.weighted_prob = np.min(wighted_prob) # type: ignore
+        self.weighted_prob = np.prod(wighted_prob) # type: ignore
+
+        self.node_prob_edge_prob.log(ts, -np.log(np.prod(node_probs)))
+
+        self.local_anomaly_model.log(ts, -np.log(self.local_prob))
+        self.global_anomaly_model.log(ts, -np.log(self.global_prob))
+        self.weighted_anomaly_model.log(ts, -np.log(self.weighted_prob))
 
 
     def score(self, hops):
         curr = self.u
         local_prob: list[float] = []
         global_prob: list[float] = []
-        wighted_prob: list[float] = []
+        weighted_prob: list[float] = []
 
         for node in hops:
             local_prob.append(self.counts[curr][node] / self.node_out_counts[curr]) 
@@ -108,6 +132,7 @@ class GraphModel(BaseModel):
             'local_probs': self.local_probs,
             'global_probs': self.global_probs,
             'weighted_probs': self.weighted_probs,
+            'paths': self.unique_paths,
         }
 
     def plot(self, axes: plt.Axes, *args, **kwargs) -> None:
@@ -132,7 +157,7 @@ class GraphModel(BaseModel):
                 colors[i] = "b"
             else:
                 colors[i] = "black"
-
+        # nx.layout.multipartite_layout()
         # print(colors)
         tmp = ng.Graph(
             graph,
@@ -181,7 +206,7 @@ class GraphModel(BaseModel):
     
     @path.setter
     def path(self, value):
-        self.unique_paths.append((self.ts, value))
+        self.unique_paths.append( value)
 
     @property
     def weighted_prob(self):
