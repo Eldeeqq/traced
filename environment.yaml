@@ -1,0 +1,30 @@
+name: stats
+channels:
+  - defaults
+dependencies:
+  - matplotlib
+  - pillow
+  - black
+  - scikit-learn
+  - jupyterlab
+  - click
+  - scipy
+  - sympy
+  - numpy
+  - pandas=2.0
+  - statsmodels
+  - isort
+  - cython
+  - seaborn
+  - jupyterlab-git
+  - u8darts-all
+  - networkx
+  - botocore
+  - python-igraph
+  - pycairo
+  - cairocffi
+  - netgraph
+  - pytest
+  - prophet
+  - folium
+prefix: /home/msi/miniconda3/envs/stats

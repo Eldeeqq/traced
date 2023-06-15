@@ -10,9 +10,11 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import netgraph as ng
 import numpy as np
+import json
 
 from trct.models.base_model import BaseModel
 from trct.models.normal_model import NormalModel
+
 
 class GraphModel(BaseModel):
     def __init__(self, src, dest):
@@ -26,7 +28,6 @@ class GraphModel(BaseModel):
         self.node_out_counts = defaultdict(lambda: 0)
         self.node_in_counts = defaultdict(lambda: 0)
         self.node_depth_counts: Dict[int, Counter[str]] = defaultdict(lambda: Counter())
-        # self.node_depth_probs: Dict[int, Dict[str, int]] = defaultdict(lambda: Counter())
 
         idx = self.node_to_index[self.u]
         self.nodes[self.u] = idx
@@ -36,14 +37,13 @@ class GraphModel(BaseModel):
         self.weighted_probs: list[float] = [0]
 
         self.ctr = 0
-        self._empty_counter = [0]
-        self.unique_paths:list[str] = ['']
+        self._empty_counter: list[int] = [0]
+        self.unique_paths: list[str] = [""]
 
         self.local_anomaly_model = NormalModel(self.u, self.v, one_sided=True)
         self.global_anomaly_model = NormalModel(self.u, self.v, one_sided=True)
         self.weighted_anomaly_model = NormalModel(self.u, self.v, one_sided=True)
         self.node_prob_edge_prob = NormalModel(self.u, self.v, one_sided=True)
-
 
     def log(self, ts, hops):
         super().log(ts)
@@ -53,8 +53,8 @@ class GraphModel(BaseModel):
         local_prob: list[float] = []
         global_prob: list[float] = []
         wighted_prob: list[float] = []
-        node_probs: list[float]= []
-        self.path = sha1('-'.join(map(str, hops)).encode('utf-8')).hexdigest( ) # type: ignore
+        node_probs: list[float] = []
+        self.path = sha1("-".join(map(str, hops)).encode("utf-8")).hexdigest()  # type: ignore
         self.node_in_counts[curr] += 1
 
         for i, node in enumerate(hops):
@@ -67,24 +67,25 @@ class GraphModel(BaseModel):
             self.node_out_counts[curr] += 1
             self.counts[curr][node] += 1
 
-            local_prob.append((1+self.counts[curr][node]) / (1+self.node_out_counts[curr])) 
+            local_prob.append(
+                (1 + self.counts[curr][node]) / (1 + self.node_out_counts[curr])
+            )
 
             self.node_depth_counts[i][curr] += 1
             node_probs.append(
-                local_prob[-1]* self.node_depth_counts[i][curr]/ self.node_depth_counts[i].total()
+                local_prob[-1]
+                * self.node_depth_counts[i][curr]
+                / self.node_depth_counts[i].total()
             )
 
-            global_prob.append(
-                  (1+self.counts[curr][node])/(self.ctr+1)
-            )
-            wighted_prob.append(global_prob[-1]*local_prob[-1])
+            global_prob.append((1 + self.counts[curr][node]) / (self.ctr + 1))
+            wighted_prob.append(global_prob[-1] * local_prob[-1])
 
-            # global_prob.append((1+self.counts[self.u][node]) / (1+self.n/len(self.edges)))
             curr = node
 
-        self.local_prob = np.prod(local_prob) # type: ignore
+        self.local_prob = np.prod(local_prob)  # type: ignore
         self.global_prob = np.prod(global_prob)  # type: ignore
-        self.weighted_prob = np.prod(wighted_prob) # type: ignore
+        self.weighted_prob = np.prod(wighted_prob)  # type: ignore
 
         self.node_prob_edge_prob.log(ts, -np.log(np.prod(node_probs)))
 
@@ -92,22 +93,20 @@ class GraphModel(BaseModel):
         self.global_anomaly_model.log(ts, -np.log(self.global_prob))
         self.weighted_anomaly_model.log(ts, -np.log(self.weighted_prob))
 
-
     def score(self, hops):
         curr = self.u
         local_prob: list[float] = []
         global_prob: list[float] = []
-        weighted_prob: list[float] = []
 
         for node in hops:
-            local_prob.append(self.counts[curr][node] / self.node_out_counts[curr]) 
+            local_prob.append(self.counts[curr][node] / self.node_out_counts[curr])
             global_prob.append(self.counts[curr][node] / self.n)
             # score.append([node_transition_prob, global_transition_prob])
-            global_prob.append(global_prob[-1]*local_prob[-1])
-            
+            global_prob.append(global_prob[-1] * local_prob[-1])
+
             curr = node
-        self.local_probs = np.prod(local_prob) # type: ignore
-        self.global_probs = np.prod(global_prob) # type: ignore
+        self.local_probs = np.prod(local_prob)  # type: ignore
+        self.global_probs = np.prod(global_prob)  # type: ignore
         return local_prob, global_prob
 
     def __repr__(self):
@@ -129,16 +128,16 @@ class GraphModel(BaseModel):
     def get_data(self) -> dict[str, list[Any]]:
         """Return the model data."""
         return {
-            'local_probs': self.local_probs,
-            'global_probs': self.global_probs,
-            'weighted_probs': self.weighted_probs,
-            'paths': self.unique_paths,
+            "local_probs": self.local_probs,
+            "global_probs": self.global_probs,
+            "weighted_probs": self.weighted_probs,
+            "paths": self.unique_paths,
         }
 
     def plot(self, axes: plt.Axes, *args, **kwargs) -> None:
         """Plot the model on specified axis."""
-        axes.plot( self.global_probs, label='global prob', *args, **kwargs)
-        axes.plot( self.local_probs, label='makrov prob', *args, **kwargs)
+        axes.plot(self.global_probs, label="global prob", *args, **kwargs)
+        axes.plot(self.local_probs, label="makrov prob", *args, **kwargs)
         axes.set_xlabel("Time")
         axes.set_ylabel("Node/Edge Fraction")
 
@@ -157,37 +156,93 @@ class GraphModel(BaseModel):
                 colors[i] = "b"
             else:
                 colors[i] = "black"
-        # nx.layout.multipartite_layout()
-        # print(colors)
-        tmp = ng.Graph(
-            graph,
-            layout="dot",
-            arrows=True,
-            weighted=True,
-            # node_color={x:colors[x] for x in g.nodes}, # TODO: this based on src/dest/normal
-            node_edge_color=colors,
-            node_labels={x: i for i, x in enumerate(graph.nodes)},
-            node_shape={x: tier_mapping[x] for x in graph.nodes},  # so^>v<dph8
-            edge_cmap="RdYlGn",
-            node_layout=kwargs["node_layout"],
-            axes=axes,
-        ) if 'node_layout' in kwargs else ng.Graph(
-            graph,
-            layout="dot",
-            arrows=True,
-            weighted=True,
-            # node_color={x:colors[x] for x in g.nodes}, # TODO: this based on src/dest/normal
-            node_edge_color=colors,
-            node_labels={x: i for i, x in enumerate(graph.nodes)},
-            node_shape={x: tier_mapping[x] for x in graph.nodes},  # so^>v<dph8
-            edge_cmap="RdYlGn",
-            axes=axes
+
+        tmp = (
+            ng.Graph(
+                graph,
+                layout="dot",
+                arrows=True,
+                weighted=True,
+                # node_color={x:colors[x] for x in g.nodes}, # TODO: this based on src/dest/normal
+                node_edge_color=colors,
+                node_labels={x: i for i, x in enumerate(graph.nodes)},
+                node_shape={x: tier_mapping[x] for x in graph.nodes},  # so^>v<dph8
+                edge_cmap="RdYlGn",
+                node_layout=kwargs["node_layout"],
+                axes=axes,
             )
-    
+            if "node_layout" in kwargs
+            else ng.Graph(
+                graph,
+                layout="dot",
+                arrows=True,
+                weighted=True,
+                # node_color={x:colors[x] for x in g.nodes}, # TODO: this based on src/dest/normal
+                node_edge_color=colors,
+                node_labels={x: i for i, x in enumerate(graph.nodes)},
+                node_shape={x: tier_mapping[x] for x in graph.nodes},  # so^>v<dph8
+                edge_cmap="RdYlGn",
+                axes=axes,
+            )
+        )
+
+    def to_json(self, ip_to_geo_mapper, threshold = 2) -> str:
+        """Return the learned graph as json."""
+        data = {}
+        data["node_mapping"] = {i: node for node, i in self.node_to_index.items()}
+
+        depths = defaultdict(lambda : 0) # default value is current
+        g = self.to_graph()
+        g.nodes[0]['d'] = 0
+
+        for src, items in nx.algorithms.traversal.bfs_successors(g,0):
+            depth = depths[src]
+            for dest in items:
+                depths[dest] = depth + 1
+                g.nodes[dest]['d'] = depths[dest]
+        layout = nx.layout.multipartite_layout(g, subset_key='d')
+
+        Q = [node for node  in g.nodes if data['node_mapping'][node] not in ip_to_geo_mapper]
+
+        while Q:
+            node = Q.pop()
+            loc = [0.,0.]
+            has_loc = 0
+            for neighbor in g.neighbors(node):
+               ip = data['node_mapping'][neighbor]
+               if ip in ip_to_geo_mapper:
+                   has_loc += 1
+                   loc[0] += ip_to_geo_mapper[ip][0]
+                   loc[1] += ip_to_geo_mapper[ip][1]
+            # thr = has_loc / len(list(g.neighbors(node)))
+            thr = has_loc
+            print(thr)
+            if thr >= threshold:
+                loc[0] = loc[0]/has_loc
+                loc[1] = loc[1] / has_loc
+                ip_to_geo_mapper[data['node_mapping'][node]] = loc
+            else:
+                Q.append(node)
+
+        final_pos = {n: list(ip_to_geo_mapper[  data["node_mapping"][n]] + 2e-3*layout[n]) for n in g.nodes()}
+
+        data["edges"] = []
+
+        for u, v in self.edges:
+            edge = {}
+            edge["src"] = u
+            edge["dest"] = v
+            edge["prob"] = self.counts[u][v] / sum(self.counts[u].values())
+
+            data["edges"].append(edge)
+        data['node_pos']  = final_pos
+
+        return json.dumps(data)
+
     @property
     def global_prob(self):
         return self.global_probs[-1]
-    
+
     @global_prob.setter
     def global_prob(self, value):
         self.global_probs.append(value)
@@ -195,7 +250,7 @@ class GraphModel(BaseModel):
     @property
     def local_prob(self):
         return self.local_probs[-1]
-    
+
     @local_prob.setter
     def local_prob(self, value):
         self.local_probs.append(value)
@@ -203,15 +258,15 @@ class GraphModel(BaseModel):
     @property
     def path(self):
         return self.unique_paths
-    
+
     @path.setter
     def path(self, value):
-        self.unique_paths.append( value)
+        self.unique_paths.append(value)
 
     @property
     def weighted_prob(self):
         return self.weighted_probs[-1]
-    
+
     @weighted_prob.setter
     def weighted_prob(self, value):
         self.weighted_probs.append(value)
