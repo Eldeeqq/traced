@@ -1,21 +1,50 @@
 import numpy as np
 import json
+from typing import Tuple, Dict, List
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-
+from collections import defaultdict
 from trct.models.normal_model import NormalModel
 from trct.models.graph_model import GraphModel
 from trct.models.bernoulli_model import BernoulliModel
 from trct.models.multinomial_model import MultinomialModel
 
+class SiteTraceMonitor:
+    def __init__(self, src_site, dest_site):
+        self.src = src_site
+        self.dest = dest_site
+
+        self.trace_models: Dict[Tuple[str, str], TraceMonitor] = {}
+
+    def log(self, data):
+        src: str = data["src"]
+        dest: str = data["dest"]
+
+        src_asn = data.get("src_asn", "NA")
+        if len(data['asns']) < 1:
+            return
+        dest_asn = data["asns"][-1]
+
+        if (src, dest) not in self.trace_models:
+            self.trace_models[(src, dest)] = TraceMonitor(src, dest, src_asn=src_asn, dest_asn=dest_asn)
+
+        self.trace_models[(src, dest)].log(data)
+
+
+    def process(self, files):
+        for file in tqdm(files):
+            with open(file, "r") as f:
+                json_data = json.load(f)
+            self.log(json_data)
+
 class TraceMonitor:
 
-    def __init__(self, u, v, dest_asn=None):
+    def __init__(self, u, v, src_asn=None, dest_asn=None):
         self.src = u
         self.dest = v
 
         self.hops_ip_model = GraphModel(u, v)
-        self.hops_asn_model = GraphModel(u, dest_asn if dest_asn else v)
+        self.hops_asn_model = GraphModel(src_asn if src_asn else u, dest_asn if dest_asn else v)
 
         self.rtt_models: dict[str, NormalModel] = {}
         self.ttl_models: dict[str, MultinomialModel] = {}
@@ -42,7 +71,7 @@ class TraceMonitor:
         for node, rtt, ttl in zip(data["hops"], data["rtts"], data["ttls"]):
             
             if node not in self.rtt_models:
-                self.rtt_models[node] = NormalModel(self.src, node)
+                self.rtt_models[node] = NormalModel(self.src, node, sigma_factor=4)
                 self.ttl_models[node] = MultinomialModel(self.src, node)
 
             self.rtt_models[node].log(ts, rtt)
@@ -63,8 +92,8 @@ class TraceMonitor:
 
         fig.show() 
         for node in self.rtt_models:
-            if self.rtt_models[node].n < 5:
-                continue
+            # if self.rtt_models[node].n < 5:
+            #     continue
             
             fig = plt.figure(figsize=(10, 5))
             self.rtt_models[node].plot(plt.gca())

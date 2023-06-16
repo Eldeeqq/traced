@@ -9,6 +9,7 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import networkx as nx
 import netgraph as ng
+import pandas as pd
 import numpy as np
 import json
 
@@ -35,6 +36,7 @@ class GraphModel(BaseModel):
         self.local_probs: list[float] = [0]
         self.global_probs: list[float] = [0]
         self.weighted_probs: list[float] = [0]
+        self.npep: list[float] = [0]
 
         self.ctr = 0
         self._empty_counter: list[int] = [0]
@@ -54,6 +56,8 @@ class GraphModel(BaseModel):
         global_prob: list[float] = []
         wighted_prob: list[float] = []
         node_probs: list[float] = []
+        npep: list[float] = []
+        
         self.path = sha1("-".join(map(str, hops)).encode("utf-8")).hexdigest()  # type: ignore
         self.node_in_counts[curr] += 1
 
@@ -66,7 +70,8 @@ class GraphModel(BaseModel):
 
             self.node_out_counts[curr] += 1
             self.counts[curr][node] += 1
-
+            npep.append((1+self.node_depth_counts[i][curr])
+                / (1+self.node_depth_counts[i].total()))
             local_prob.append(
                 (1 + self.counts[curr][node]) / (1 + self.node_out_counts[curr])
             )
@@ -78,6 +83,7 @@ class GraphModel(BaseModel):
                 / self.node_depth_counts[i].total()
             )
 
+        
             global_prob.append((1 + self.counts[curr][node]) / (self.ctr + 1))
             wighted_prob.append(global_prob[-1] * local_prob[-1])
 
@@ -88,7 +94,7 @@ class GraphModel(BaseModel):
         self.weighted_prob = np.prod(wighted_prob)  # type: ignore
 
         self.node_prob_edge_prob.log(ts, -np.log(np.prod(node_probs)))
-
+        self.npep.append((np.prod(npep))) # type: ignore
         self.local_anomaly_model.log(ts, -np.log(self.local_prob))
         self.global_anomaly_model.log(ts, -np.log(self.global_prob))
         self.weighted_anomaly_model.log(ts, -np.log(self.weighted_prob))
@@ -131,15 +137,19 @@ class GraphModel(BaseModel):
             "local_probs": self.local_probs,
             "global_probs": self.global_probs,
             "weighted_probs": self.weighted_probs,
+            "node_prob": self.npep,
             "paths": self.unique_paths,
         }
 
     def plot(self, axes: plt.Axes, *args, **kwargs) -> None:
         """Plot the model on specified axis."""
-        axes.plot(self.global_probs, label="global prob", *args, **kwargs)
-        axes.plot(self.local_probs, label="makrov prob", *args, **kwargs)
+
+        df = self.to_frame()
+        df['local_probs'].plot(ax=axes, label="local prob", c='red', alpha=0.5, *args, **kwargs)
+        df['node_prob'].plot(ax=axes, label="node prob", c='blue', alpha=0.5,*args, **kwargs)
+       
         axes.set_xlabel("Time")
-        axes.set_ylabel("Node/Edge Fraction")
+        axes.set_ylabel("Probability")
 
     def plot_graph(
         self, axes: plt.Axes, tier_mapping=defaultdict(lambda: "o"), *args, **kwargs
@@ -214,10 +224,10 @@ class GraphModel(BaseModel):
                    has_loc += 1
                    loc[0] += ip_to_geo_mapper[ip][0]
                    loc[1] += ip_to_geo_mapper[ip][1]
-            # thr = has_loc / len(list(g.neighbors(node)))
+            thr = has_loc / len(list(g.neighbors(node)))
             thr = has_loc
             print(thr)
-            if thr >= threshold:
+            if thr >= min(threshold, 2/len(list(g.neighbors(node)))):
                 loc[0] = loc[0]/has_loc
                 loc[1] = loc[1] / has_loc
                 ip_to_geo_mapper[data['node_mapping'][node]] = loc
@@ -236,6 +246,8 @@ class GraphModel(BaseModel):
 
             data["edges"].append(edge)
         data['node_pos']  = final_pos
+        data['src'] = self.u
+        data['dest'] = self.v
 
         return json.dumps(data)
 

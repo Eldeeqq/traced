@@ -5,4 +5,4 @@ from trct.models.normal_model import NormalModel
 
 from trct.models.multinomial_model import MultinomialModel
 
-from trct.trace_monitor import TraceMonitor
+from trct.trace_monitor import TraceMonitor, SiteTraceMonitor
