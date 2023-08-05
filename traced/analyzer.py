@@ -104,11 +104,14 @@ class TraceAnalyzer:
         scores = []
         prev = src
 
-        for (node, asn, ttl, rtt,
+        for (
+            node,
+            asn,
+            ttl,
+            rtt,
         ) in zip(hops, asns, data["ttls"], data["rtts"]):
             model = self.get_edge_model(src, node)
             model.log(ts, rtt)
-
 
         return np.array(scores).T
 

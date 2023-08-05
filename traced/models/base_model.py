@@ -1,10 +1,9 @@
 """Base class for all models."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 import matplotlib.pyplot as plt
-from typing import Optional
 import pandas as pd
 
 

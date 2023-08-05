@@ -1,17 +1,15 @@
-from abc import ABC, abstractmethod
-from collections import defaultdict, OrderedDict
 import copy
+import json
+from abc import ABC, abstractmethod
+from collections import Counter, OrderedDict, defaultdict
 from hashlib import sha1
-from typing import Any, Dict, Iterable, List, Set, Tuple, Optional
-from collections import Counter
-
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import matplotlib.pyplot as plt
-import networkx as nx
 import netgraph as ng
-import pandas as pd
+import networkx as nx
 import numpy as np
-import json
+import pandas as pd
 
 from traced.models.base_model import BaseModel
 from traced.models.multinomial_model import MultinomialModel
@@ -110,7 +108,11 @@ class GraphModel(BaseModel):
         # self.global_anomaly_model.log(ts, -np.log(self.global_prob))
         # self.weighted_anomaly_model.log(ts, -np.log(self.weighted_prob))
 
-        return bool(self.node_prob_edge_prob.anomaly), path_probs, float(np.mean(path_probs)) 
+        return (
+            bool(self.node_prob_edge_prob.anomaly),
+            path_probs,
+            float(np.mean(path_probs)),
+        )
 
     def __repr__(self):
         return f"{self.u} -> {self.v} (#{self.n} Graph)"
@@ -156,12 +158,12 @@ class GraphModel(BaseModel):
         axes.set_ylabel("Probability")
 
     def plot_graph(
-        self, axes: Optional[plt.Axes]=None, tier_mapping=defaultdict(lambda: "o"), *args, **kwargs # type: ignore
+        self, axes: Optional[plt.Axes] = None, tier_mapping=defaultdict(lambda: "o"), *args, **kwargs  # type: ignore
     ) -> None:
         """Plot the model on specified axis."""
         # TODO: add legends https://netgraph.readthedocs.io/en/latest/sphinx_gallery_output/plot_18_legends.html#sphx-glr-sphinx-gallery-output-plot-18-legends-py
         graph = self.to_graph()
-        
+
         if axes is None:
             axes: plt.Axes = plt.gca()
 

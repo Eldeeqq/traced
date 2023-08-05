@@ -1,13 +1,11 @@
 """Bernoulli model for bayesian inference."""
 
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import matplotlib.figure as figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-from typing import Tuple, Optional
 
 from traced.models.base_model import BaseModel
 
@@ -39,12 +37,11 @@ class BernoulliModel(BaseModel):
         self.gamma = gamma
         self.threshold = threshold
 
-
     def log(self, ts, success) -> Tuple[bool, float]:
-        super().log(ts) 
+        super().log(ts)
         p = self.success_prob
         self.success = success
-        return  self.success_prob < self.threshold, p
+        return self.success_prob < self.threshold, p
 
     def __repr__(self) -> str:
         """String representation of the model."""
@@ -67,20 +64,22 @@ class BernoulliModel(BaseModel):
             seen.add(prob)
         return False
 
-    def plot(self, axes: Optional[plt.Axes] = None, *args, **kwargs) -> None: # type: ignore
+    def plot(self, axes: Optional[plt.Axes] = None, *args, **kwargs) -> None:  # type: ignore
         """Plot the model on specified axis."""
         # get data
         df = self.to_frame(omit_first=True)
 
         if "resample" in kwargs:
-            df = (df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean())
+            df = (
+                df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean()
+            )
             del kwargs["resample"]
 
         if axes is None:
             axes: plt.Axes = plt.gca()
 
         # https://stats.stackexchange.com/questions/4756/confidence-interval-for-bernoulli-sampling
-        bound = 3*(df["success_var"]).apply(np.sqrt)
+        bound = 3 * (df["success_var"]).apply(np.sqrt)
 
         upper_bound = df["success_prob"] + bound
         lower_bound = df["success_prob"] - bound
@@ -106,8 +105,8 @@ class BernoulliModel(BaseModel):
         """Update the success and failure counts and Bernouli distribution parameters."""
         a, b = self.success
         a, b = a + 1 if success else a, b + 1 if not success else b
-        a,b = a*self.gamma, b*self.gamma
-        
+        a, b = a * self.gamma, b * self.gamma
+
         self.successes.append(a)
         self.failures.append(b)
         self.success_prob = a / (a + b)

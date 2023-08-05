@@ -1,19 +1,22 @@
 import copy
-from matplotlib import pyplot as plt
-import numpy as np
 from collections import defaultdict
-from typing import Any, List, Dict, Optional, Tuple, Union, Hashable
+from typing import Any, Dict, Hashable, List, Optional, Tuple, Union
+
+import numpy as np
 import pandas as pd
 import scipy
+from matplotlib import pyplot as plt
 
 from traced.models.base_model import BaseModel
 
 
 class MultinomialModel(BaseModel):
-    def __init__(self, src: str, dest: str, gamma: float=1., *args, **kwargs) -> None:
+    def __init__(
+        self, src: str, dest: str, gamma: float = 1.0, *args, **kwargs
+    ) -> None:
         super().__init__(src, dest, *args, **kwargs)
 
-        self.undef: list[float] = [0.]  # number of undefined observations
+        self.undef: list[float] = [0.0]  # number of undefined observations
         self.undef_prob: list[float] = [0.0]  # number of undefined observations
         self.seen: set[Hashable] = set()  # set of seen timestamps
         self.gamma = gamma
@@ -35,8 +38,8 @@ class MultinomialModel(BaseModel):
             lambda: copy.deepcopy(self.undef_prob)
         )
         self.cats: list[Hashable] = [0]
-        self.cat_prob: list[float] = [] #TODO add 0 abd propagate to df
-        self.max_cat_prob: list[float] = [] #TODO add 0 abd propagate to df
+        self.cat_prob: list[float] = []  # TODO add 0 abd propagate to df
+        self.max_cat_prob: list[float] = []  # TODO add 0 abd propagate to df
         self.expected_val: list[float] = []
         self.most_probable_cat: list[Hashable] = []
         self.anomalies: list[bool] = [False]
@@ -47,7 +50,6 @@ class MultinomialModel(BaseModel):
         self.cat = cat
         # TODO: calculate
         return bool(self.anomalies[-1]), float(self.cat_prob[-1])
-        
 
     @property
     def k(self) -> int:
@@ -61,11 +63,13 @@ class MultinomialModel(BaseModel):
         return {
             "cats": self.cats,
             **{f"p_{i}": self.posterior_probs[i] for i in self.posterior_probs.keys()},
-            **{f"var_p_{i}": self.posterior_var[i] for i in self.posterior_probs.keys()},
+            **{
+                f"var_p_{i}": self.posterior_var[i] for i in self.posterior_probs.keys()
+            },
             **{f"m_{i}": self.marginal_probs[i] for i in self.marginal_probs.keys()},
             **{f"n_{i}": self.counts[i] for i in self.marginal_probs.keys()},
-            'anomalies': self.anomalies,
-            'anomalies_y': self.anomalies_y,
+            "anomalies": self.anomalies,
+            "anomalies_y": self.anomalies_y,
         }
 
     def plot_marginal_posterior(self, *args, **kwargs) -> None:
@@ -96,17 +100,17 @@ class MultinomialModel(BaseModel):
         ax1.legend()
         ax0.legend()
 
-    def plot(self, axes: Optional[plt.Axes] = None, *args, **kwargs) -> None: # type: ignore
+    def plot(self, axes: Optional[plt.Axes] = None, *args, **kwargs) -> None:  # type: ignore
         """Plot the model on specified axis."""
         if axes is None:
             axes: plt.Axes = plt.gca()
 
         df = self.to_frame()
         for i in self.posterior_probs.keys():
-            df[f'p_{i}'].plot(axes=axes, label=f"p_{i}")
+            df[f"p_{i}"].plot(axes=axes, label=f"p_{i}")
             thr = 3 * np.sqrt(df[f"var_p_{i}"])
-            axes.fill_between(df.index, df[f'p_{i}'] - thr, df[f'p_{i}'] + thr, alpha=0.15)  # type: ignore
-        anomalies = df[df['anomalies']]
+            axes.fill_between(df.index, df[f"p_{i}"] - thr, df[f"p_{i}"] + thr, alpha=0.15)  # type: ignore
+        anomalies = df[df["anomalies"]]
         if anomalies.shape[0] > 0:
             anomalies.plot(
                 y="anomalies_y",
@@ -134,7 +138,7 @@ class MultinomialModel(BaseModel):
 
         self.anomalies_y.append(self.posterior_probs[cat][-1])
         # tmp = 0
-        index  = -1
+        index = -1
         max_prob = 0
         for key in self.seen:
             new_count = float(self.counts[key][-1] + int(key == cat) * self.gamma)
@@ -163,6 +167,7 @@ class MultinomialModel(BaseModel):
 if __name__ == "__main__":
     model = MultinomialModel("a", "b")
     import scipy.stats
+
     data = np.argmax(
         scipy.stats.multinomial.rvs(1, [0.1, 0.2, 0.5, 0.05, 0.15], size=1000), axis=1
     )

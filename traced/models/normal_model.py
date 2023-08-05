@@ -4,13 +4,24 @@ import matplotlib.figure as figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.stats 
+import scipy.stats
 
 from traced.models.base_model import BaseModel
 
 
 class NormalModel(BaseModel):
-    def __init__(self, u, v, alpha_0=1, beta_0=1, mu_0=5, sigma_0=2, one_sided=False, gamma:float=1, sigma_factor:float=3):
+    def __init__(
+        self,
+        u,
+        v,
+        alpha_0=1,
+        beta_0=1,
+        mu_0=5,
+        sigma_0=2,
+        one_sided=False,
+        gamma: float = 1,
+        sigma_factor: float = 3,
+    ):
         super().__init__(u, v)
 
         self.alphas: list[float] = [alpha_0]
@@ -27,8 +38,9 @@ class NormalModel(BaseModel):
         self.one_sided: bool = one_sided
         self.gamma = gamma
 
-
-    def log(self, ts, obsedved_variable) -> Tuple[bool, float, float, float, float, float]:
+    def log(
+        self, ts, obsedved_variable
+    ) -> Tuple[bool, float, float, float, float, float]:
         """Log a new observation."""
 
         super().log(ts)
@@ -37,9 +49,14 @@ class NormalModel(BaseModel):
         # isf = scipy.stats.norm(self.mu, self.sigma).isf(obsedved_variable)
         self.observed_variable = obsedved_variable
         # return bool(self.anomaly), float(prob), float(self.mu), float(obsedved_variable)
-        return bool(self.anomaly), float(self.n_anomalies), float(
-            (obsedved_variable - self.mu)/self.sigma
-        ), float(self.mu), float(obsedved_variable), float(self.sigma)
+        return (
+            bool(self.anomaly),
+            float(self.n_anomalies),
+            float((obsedved_variable - self.mu) / self.sigma),
+            float(self.mu),
+            float(obsedved_variable),
+            float(self.sigma),
+        )
 
     def __repr__(self) -> str:
         """String representation of the model."""
@@ -55,10 +72,10 @@ class NormalModel(BaseModel):
             "sigma": self.sigmas,
             "upper_bound": self.upper_bound,
             "lower_bound": self.lower_bound,
-            'anomalies': self.anomalies
+            "anomalies": self.anomalies,
         }
 
-    def plot(self, axes: Optional[plt.Axes] = None, **kwargs) -> None: # type: ignore
+    def plot(self, axes: Optional[plt.Axes] = None, **kwargs) -> None:  # type: ignore
         """Plot the model statistics."""
         if axes is None:
             axes: plt.Axes = plt.gca()
@@ -69,10 +86,13 @@ class NormalModel(BaseModel):
                 df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean()
             )
 
-        axes.fill_between(df.index, df["lower_bound"], df["upper_bound"], facecolor="gray", alpha=0.3) # type: ignore
+        axes.fill_between(df.index, df["lower_bound"], df["upper_bound"], facecolor="gray", alpha=0.3)  # type: ignore
 
         df["lower_bound"].plot(
-            ax=axes, color="tab:purple", label="$\\pm" + str(self.sigma_factor) + "\\sigma$", alpha=0.5
+            ax=axes,
+            color="tab:purple",
+            label="$\\pm" + str(self.sigma_factor) + "\\sigma$",
+            alpha=0.5,
         )
         df["upper_bound"].plot(
             ax=axes, color="tab:purple", alpha=0.5, label="_nolegend_"
@@ -81,7 +101,7 @@ class NormalModel(BaseModel):
         df["mu"].plot(axes=axes, label="$\\mathbb{E}(X)$", color="tab:blue")
 
         anomalies = df[df["anomalies"]]
-        
+
         if anomalies.shape[0] > 0:
             anomalies.plot(
                 y="observed",
@@ -98,8 +118,10 @@ class NormalModel(BaseModel):
             f"\n {self.u}->{self.v} "
         )
 
-        if 'start' in kwargs:
-            axes.axvline(kwargs['start'], color='gray', linestyle='--', label='training end')
+        if "start" in kwargs:
+            axes.axvline(
+                kwargs["start"], color="gray", linestyle="--", label="training end"
+            )
 
         axes.legend(fancybox=True)
         axes.set_xlabel("time")
@@ -150,7 +172,7 @@ class NormalModel(BaseModel):
     def sigma(self, sigma):
         self.sigmas.append(sigma)
 
-    @property   
+    @property
     def observed_variable(self):
         return self.observed_variables[-1]
 
@@ -158,7 +180,7 @@ class NormalModel(BaseModel):
     def observed_variable(self, value):
         self.observed_variables.append(value)
 
-        self.alpha +=  self.gamma #1 / 2
+        self.alpha += self.gamma  # 1 / 2
         # self.beta += 0.5 * (value - self.mu) ** 2
         self.beta += self.gamma * (value - self.mu) ** 2
 
@@ -166,8 +188,13 @@ class NormalModel(BaseModel):
         self.sigma = np.sqrt(self.beta / (self.alpha + 1))
         self.ub = self.mu + self.sigma_factor * self.sigma
         self.lb = self.mu - self.sigma_factor * self.sigma
-        self.anomaly = value > self.ub or value < self.lb if not self.one_sided else value > self.ub
+        self.anomaly = (
+            value > self.ub or value < self.lb
+            if not self.one_sided
+            else value > self.ub
+        )
         self.n_anomalies += self.anomaly
+
     @property
     def n(self):
         return self.ns[-1]
@@ -195,7 +222,7 @@ class NormalModel(BaseModel):
     @property
     def anomaly(self):
         return self.anomalies[-1]
-    
+
     @anomaly.setter
     def anomaly(self, anomaly):
         self.anomalies.append(anomaly)
