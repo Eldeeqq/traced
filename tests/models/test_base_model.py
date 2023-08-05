@@ -1,4 +1,4 @@
-from trct import BaseModel
+from traced import BaseModel
 
 
 class TestBaseModel:

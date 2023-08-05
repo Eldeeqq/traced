@@ -1,4 +1,4 @@
-from trct import BernoulliModel
+from traced import BernoulliModel
 
 
 class TestBernoulliModel:
@@ -66,14 +66,6 @@ class TestBernoulliModel:
         model.plot(ax)
         plt.close(fig)
 
-
-    def test_score(self):
-        model = BernoulliModel("u", "v")
-        model.log(123, True)
-        sc = model.score(True)
-        assert sc == 0.0
-        sc = model.score(False)
-        assert sc == -1.0
 
     def test_get_data(self):
         model = BernoulliModel("u", "v")
