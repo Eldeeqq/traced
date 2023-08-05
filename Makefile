@@ -4,4 +4,4 @@ test:
 
 requirements:
 	echo "Generating requirements.txt using current env..."
-	pip list --format=freeze > requirements.txt
+	pip list --not-required --format=freeze > requirements.txt
