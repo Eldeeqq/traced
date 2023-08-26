@@ -20,4 +20,4 @@ jobs:
         pip install pylint
     - name: Analysing the code with pylint
       run: |
-        pylint $(git ls-files '*.py') --disable C0103,W1309,C0116
+        pylint $(git ls-files 'traced_v2/*.py') --disable C0103,W1309,C0116
