@@ -16,7 +16,10 @@ from traced.models.multinomial_model import MultinomialModel
 from traced.models.normal_model import NormalModel
 
 
+
 class GraphModel(BaseModel):
+
+
     def __init__(self, src, dest):
         super().__init__(src, dest)
 
@@ -105,8 +108,6 @@ class GraphModel(BaseModel):
 
         self.node_prob_edge_prob.log(ts, -np.log(np.prod(path_probs)))
         self.local_anomaly_model.log(ts, -np.log(self.local_prob))
-        # self.global_anomaly_model.log(ts, -np.log(self.global_prob))
-        # self.weighted_anomaly_model.log(ts, -np.log(self.weighted_prob))
 
         return (
             bool(self.node_prob_edge_prob.anomaly),

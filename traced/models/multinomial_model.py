@@ -34,6 +34,7 @@ class MultinomialModel(BaseModel):
         self.posterior_probs: dict[Hashable, list[float]] = defaultdict(
             lambda: copy.deepcopy(self.undef_prob)
         )  # todo use 1  - uniform prior
+
         self.posterior_var: dict[Hashable, list[float]] = defaultdict(
             lambda: copy.deepcopy(self.undef_prob)
         )
@@ -48,8 +49,16 @@ class MultinomialModel(BaseModel):
     def log(self, ts: int, cat: Hashable):
         super().log(ts)
         self.cat = cat
+
+        probs = [float(x[-1]) for x in self.posterior_probs.values()]
+        mu = np.mean(probs)
+        sigma = np.std(probs)
         # TODO: calculate
-        return bool(self.anomalies[-1]), float(self.cat_prob[-1])
+        return (
+            bool(self.anomalies[-1]),
+            float(self.cat_prob[-1]),
+            float(self.cat_prob[-1] / self.max_cat_prob[-1]),
+        )
 
     @property
     def k(self) -> int:

@@ -34,8 +34,8 @@ class BaseModel:
             ValueError: if timestamps are not increasing
         """
 
-        if not self.ts <= ts:
-            raise ValueError(f"Timestamps must be increasing. {self.ts} !< {ts}.")
+        # if not self.ts <= ts:
+        #     raise ValueError(f"Timestamps must be increasing. {self.ts} !< {ts}.")
 
         self.n += 1
         self.ts = ts

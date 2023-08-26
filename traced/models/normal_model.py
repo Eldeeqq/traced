@@ -45,7 +45,7 @@ class NormalModel(BaseModel):
 
         super().log(ts)
         # prob = self.pdf(obsedved_variable)
-        prob = self.pdf(obsedved_variable)
+        # prob = self.pdf(obsedved_variable)
         # isf = scipy.stats.norm(self.mu, self.sigma).isf(obsedved_variable)
         self.observed_variable = obsedved_variable
         # return bool(self.anomaly), float(prob), float(self.mu), float(obsedved_variable)
@@ -114,8 +114,10 @@ class NormalModel(BaseModel):
             )
 
         axes.set_title(
-            f"Anomalies on {kwargs.get('title', 'RTT')} ({anomalies.shape[0]}, {100*anomalies.shape[0]/df.shape[0]:.3f}%)"
-            f"\n {self.u}->{self.v} "
+            f"Anomalies on {kwargs.get('title', 'RTT')} ({anomalies.shape[0]},"
+            f" {100*anomalies.shape[0]/df.shape[0]:.3f}%)"
+            if df.shape[0] > 0
+            else "NaN" f"\n {self.u}->{self.v} "
         )
 
         if "start" in kwargs:

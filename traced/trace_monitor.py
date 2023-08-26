@@ -16,7 +16,26 @@ from traced.models.poisson_model import PoissonModel
 
 class MultiSiteTraceMonitor:
     def __init__(self):
-        self.trace_models: Dict[Tuple[str, str], TraceMonitor] = {}
+        self.trace_models: Dict[Tuple[str, str], SiteTraceMonitor] = {}
+    
+    def process(self, files):
+        for file in tqdm(files):
+            with open(file, "r") as f:
+                json_data = json.load(f)
+            self.log(json_data)
+
+    def log(self, data):
+        src_site: str = data.get("src_site", "NA")
+        dest_site: str = data["dest_site"]
+
+        if (src_site, dest_site) not in self.trace_models:
+            self.trace_models[(src_site, dest_site)] = SiteTraceMonitor(
+                src_site, dest_site
+            )
+        site_monitor = self.trace_models[(src_site, dest_site)]
+        site_monitor.log(data)
+
+
 
 
 class SiteTraceMonitor:
