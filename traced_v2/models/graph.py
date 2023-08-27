@@ -1,5 +1,7 @@
 """Graph model for trace modelling in network graph."""
 from collections import Counter, defaultdict
+from datetime import datetime
+from hashlib import sha1
 from typing import Any, Hashable
 
 import networkx as nx
@@ -100,25 +102,37 @@ class ForgettingGraph(Graph):
 class GraphModel(BaseModel, Visual):
     """Graph model for trace modelling in network graph."""
 
-    _GLOBAL_GRAPH = Graph()
-    _GLOBAL_FORGETTING_GRAPH = ForgettingGraph()
+    REGISTRY = {
+        "global": Graph(),
+        "global_forgetting": ForgettingGraph(),
+        "global_ip": Graph(),
+        "global_forgetting_ip": ForgettingGraph(),
+        "global_as": Graph(),
+        "global_forgetting_as": ForgettingGraph(),
+    }
+
+    @classmethod
+    def get_or_create_subscription(
+        cls, forgetting: bool = True, local: bool = True
+    ) -> str:
+        if not local:
+            return "global_forgetting" if forgetting else "global"
+
+        key = sha1(str(datetime.now()).encode()).hexdigest()
+        cls.REGISTRY[key] = ForgettingGraph() if forgetting else Graph()
+        return key
 
     def __init__(
         self,
         src: str,
         dest: str,
-        local: bool = False,
-        forgetting: bool = False,
+        graph_subscription: str = "global_forgetting",
         parent: BaseModel | None = None,
     ) -> None:
         super().__init__(
             src, dest, subscription=parent.subscription if parent else None
         )
-        self.graph: Graph = (
-            (Graph() if local else GraphModel._GLOBAL_GRAPH)
-            if not forgetting
-            else (ForgettingGraph() if local else GraphModel._GLOBAL_FORGETTING_GRAPH)
-        )
+        self.graph: Graph = GraphModel.REGISTRY[graph_subscription]
         self.probs = []
 
     def log(self, ts: int, observed_value: list[Hashable]):
@@ -141,9 +155,14 @@ class GraphModel(BaseModel, Visual):
             "probs": self.probs,
         }
 
-    def plot(self, ax: Figure | Axes | None = None):
+    def plot(
+        self,
+        ax: Figure | Axes | None = None,
+        layout: dict[Hashable, tuple[float, float]] | None = None,
+    ):
         if not ax:
             ax = plt.gca()
         graph = self.graph.to_graph()
-        pos = nx.random_layout(graph)
-        nx.draw(graph, pos, with_labels=True, ax=ax)
+        if not layout:
+            layout = nx.random_layout(graph)
+        nx.draw(graph, layout, with_labels=True, ax=ax)

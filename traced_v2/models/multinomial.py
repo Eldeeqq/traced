@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any
 
 import numpy as np
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
@@ -26,7 +27,7 @@ class MultinomialModel(BaseModel, Visual):
 
         self.observed_variables: list[Any] = []
         self.probabilities: list[float] = []
-        self.divergence: list[float] = []
+        self.variance: list[float] = []
 
         self.gamma: float = gamma
         self.counter: int = 1
@@ -45,27 +46,32 @@ class MultinomialModel(BaseModel, Visual):
         posterior_prob = (self.category_counts[observed_value] + 1) / (
             self.counter + len(self.seen_categories)
         )
+        a = self.category_counts[observed_value]
+        b = self.counter - a
+        var = (a * b) / ((self.counter**2) * (self.counter + 1))
+        self.variance.append(var)
         self.category_probs[observed_value] = posterior_prob
         self.probabilities.append(posterior_prob)
         self.observed_variables.append(observed_value)
 
-        d_kl = -np.sum(
-            [
-                p * (np.log1p(p / posterior_prob))
-                for p in self.category_probs.values()
-                if p != observed_value
-            ]
-        )
-        self.divergence.append(d_kl)
-
-        return posterior_prob, d_kl, prior - self.probabilities[-1]
+        return posterior_prob, var, prior - self.probabilities[-1]
 
     def to_dict(self) -> dict[str, list[Any]]:
         return {
             "observed_variables": self.observed_variables,
+            "variance": self.variance,
             "probabilities": self.probabilities,
         }
 
     def plot(self, ax: Figure | Axes | None = None):
         df = self.to_frame()
-        df.plot(ax=ax, y="probabilities", c="observed_variables", kind="scatter")
+        if ax is None:
+            ax = plt.gca()
+
+        for i, gdf in df.groupby("observed_variables"):
+            lower_bound = gdf["probabilities"] - 3 * gdf["variance"].apply(np.sqrt)
+            upper_bound = gdf["probabilities"] + 3 * gdf["variance"].apply(np.sqrt)
+            ax.fill_between(gdf.index, lower_bound, upper_bound, alpha=0.15)  # type: ignore
+            gdf["probabilities"].plot(ax=ax, label=i)
+
+        plt.legend()

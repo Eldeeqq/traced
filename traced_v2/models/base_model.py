@@ -56,7 +56,7 @@ class BaseModel(ABC):
     def to_dict(self) -> dict[str, list[Any]]:
         """Convert the model statistics to a dictionary."""
 
-    def to_frame(self, omit_first: object = True) -> pd.DataFrame:
+    def to_frame(self, omit_first: object = False) -> pd.DataFrame:
         """Convert the model statistics to a pandas DataFrame."""
         df = pd.DataFrame(
             self.to_dict(),
