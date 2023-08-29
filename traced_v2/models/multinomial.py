@@ -10,6 +10,7 @@ from matplotlib.figure import Figure
 
 from traced_v2.models.base_model import BaseModel, Visual
 
+
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 
 
@@ -17,9 +18,11 @@ class MultinomialModel(BaseModel, Visual):
     """Univariate Multinomial model with bayesian updating."""
 
     def __init__(
-        self, src: str, dest: str, *args, gamma: float = 1.0, **kwargs
+        self, src: str, dest: str, parent: BaseModel | None = None, gamma: float = 1.0
     ) -> None:
-        super().__init__(src, dest, *args, **kwargs)
+        super().__init__(
+            src, dest, subscription=parent.subscription if parent else None
+        )
 
         self.seen_categories: set[Any] = set()
         self.category_counts: dict[Any, float] = defaultdict(lambda: 1.0)

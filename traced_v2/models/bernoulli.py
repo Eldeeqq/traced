@@ -1,6 +1,5 @@
 """Module for the MultinomialModel class."""
 
-from collections import defaultdict
 from typing import Any
 
 import numpy as np
@@ -9,6 +8,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from traced_v2.models.base_model import BaseModel, Visual
+
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 
@@ -40,24 +40,28 @@ class BernoulliModel(BaseModel, Visual):
             color="tab:blue",
             legend="probability",
         )
-        df[df["observed_variables"] == True].plot(
-            ax=ax,
-            y="observed_variables",
-            label="success",
-            color="green",
-            marker="o",
-            linestyle="None",
-            alpha=0.025,
-        )
-        df[df["observed_variables"] == False].plot(
-            ax=ax,
-            y="observed_variables",
-            label="failure",
-            color="red",
-            marker="o",
-            linestyle="None",
-            alpha=0.025,
-        )
+        positive = df[df["observed_variables"] == True]
+        if positive.shape[0] > 1:
+            positive.astype(int).plot(
+                ax=ax,
+                y="observed_variables",
+                label="success",
+                color="green",
+                marker="o",
+                linestyle="None",
+                alpha=0.025,
+            )
+        negative = df[df["observed_variables"] == False]
+        if negative.shape[0] > 1:
+            negative.astype(int).plot(
+                ax=ax,
+                y="observed_variables",
+                label="failure",
+                color="red",
+                marker="o",
+                linestyle="None",
+                alpha=0.025,
+            )
         ax.set_ylabel("$P(\\mathrm{success})$")
         ax.set_title(f"Probability of success")
         ax.set_ylabel("$p$")
@@ -69,8 +73,12 @@ class BernoulliModel(BaseModel, Visual):
             except AttributeError:
                 pass
 
-    def __init__(self, src: str, dest: str, *args, **kwargs) -> None:
-        super().__init__(src, dest, *args, **kwargs)
+    def __init__(
+        self, src: str, dest: str, parent: BaseModel | None = None, *args, **kwargs
+    ) -> None:
+        super().__init__(
+            src, dest, subscription=parent.subscription if parent else None
+        )
 
         self.alpha: int = 0
         self.beta: int = 0

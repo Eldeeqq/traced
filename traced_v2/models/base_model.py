@@ -3,11 +3,12 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime
-from hashlib import sha1
 from typing import Any
 
 import pandas as pd
 from matplotlib.pyplot import Axes, Figure
+
+from traced_v2.utils import create_hash
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 
@@ -34,9 +35,7 @@ class BaseModel(ABC):
 
     def generate_id(self) -> str:
         """Generate a unique ID for the model index."""
-        return sha1(
-            ("".join([self.src, self.dest, str(datetime.now())]).encode())
-        ).hexdigest()
+        return create_hash(f"{self.src}{self.dest}{str(datetime.now())}")
 
     def get_n(self) -> int:
         """Get the number of observations."""

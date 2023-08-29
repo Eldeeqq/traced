@@ -1,7 +1,6 @@
 """Graph model for trace modelling in network graph."""
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime
-from hashlib import sha1
 from typing import Any, Hashable
 
 import networkx as nx
@@ -10,8 +9,10 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.pyplot import Axes
 
+from traced_v2.models.normal import NormalModel
 from traced_v2.models.base_model import BaseModel, Visual
-import folium
+from traced_v2.utils import create_hash, add_prefix
+
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 
@@ -111,6 +112,8 @@ class GraphModel(BaseModel, Visual):
         "global_forgetting_as": ForgettingGraph(),
     }
 
+    REGISTRY_KEYS = list(REGISTRY.keys())
+
     @classmethod
     def get_or_create_subscription(
         cls, forgetting: bool = True, local: bool = True
@@ -118,7 +121,7 @@ class GraphModel(BaseModel, Visual):
         if not local:
             return "global_forgetting" if forgetting else "global"
 
-        key = sha1(str(datetime.now()).encode()).hexdigest()
+        key = create_hash(str(datetime.now()))
         cls.REGISTRY[key] = ForgettingGraph() if forgetting else Graph()
         return key
 
@@ -134,25 +137,43 @@ class GraphModel(BaseModel, Visual):
         )
         self.graph: Graph = GraphModel.REGISTRY[graph_subscription]
         self.probs = []
+        self.prob_model: NormalModel = NormalModel(
+            src,
+            dest,
+            parent=self,
+            one_sided=True,
+            mu_0=-2,
+            sigma_0=1,
+            alpha_0=1,
+            beta_0=1,
+        )
+        # TODO: create a NormalModel subscriber here
 
     def log(self, ts: int, observed_value: list[Hashable]):
         """Log a trace."""
         super().log_timestamp(ts)
         probs = []
+        log_prob = []
+
         if not observed_value:
             self.probs.append(0)
-            return
+            return self.prob_model.log(ts, -np.log1p(0))
+
         current = observed_value[0]
         for item in observed_value[1:]:
-            probs.append(np.log1p(self.graph.get_prob(current, item)))
+            p = self.graph.get_prob(current, item)
+            log_prob.append(np.log1p(p))
+            probs.append(p)
             self.graph.add_edge(current, item)
             current = item
-        self.probs.append(np.sum(probs))
+        self.probs.append(np.prod(probs))
+        return self.prob_model.log(ts, -np.sum(log_prob))
 
     def to_dict(self) -> dict[str, list[Any]]:
         """Convert the model statistics to a dictionary."""
         return {
-            "probs": self.probs,
+            "path_prob": self.probs,
+            **add_prefix("log_prob", self.prob_model.to_dict()),
         }
 
     def plot(

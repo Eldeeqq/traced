@@ -9,6 +9,7 @@ from matplotlib.pyplot import Axes
 
 from traced_v2.models.base_model import BaseModel, Visual
 
+
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 
 
