@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 import pandas as pd
-from matplotlib.pyplot import Axes, Figure
+from matplotlib.pyplot import Axes
 
 from traced_v2.utils import create_hash
 
@@ -20,7 +20,7 @@ TS_SUBSCRIPTIONS = defaultdict(
 class BaseModel(ABC):
     """Abstract class for all models."""
 
-    def __init__(self, src: str, dest: str, subscription: str | None = None):
+    def __init__(self, src: str, dest: str, subscription: str | None = None) -> None:
         self.src: str = src
         self.dest: str = dest
 
@@ -28,12 +28,10 @@ class BaseModel(ABC):
         self.n_anomalies = 1
 
         self.is_subscribed: bool = subscription is not None
-        self.subscription: str | None = (
-            subscription if self.is_subscribed else self.generate_id()
-        )
+        self.subscription: str | None = subscription or self._generate_id()
         self.timestamps: list[int] = TS_SUBSCRIPTIONS[self.subscription]
 
-    def generate_id(self) -> str:
+    def _generate_id(self) -> str:
         """Generate a unique ID for the model index."""
         return create_hash(f"{self.src}{self.dest}{str(datetime.now())}")
 
@@ -75,5 +73,5 @@ class Visual(ABC):
 
     # pylint: disable=too-few-public-methods
     @abstractmethod
-    def plot(self, ax: Figure | Axes | None = None):
+    def plot(self, ax: Axes | None = None) -> None:
         """Plot the model statistics."""

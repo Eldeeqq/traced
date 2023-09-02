@@ -1,6 +1,6 @@
 """Module for the MultinomialModel class."""
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -11,10 +11,37 @@ from traced_v2.models.base_model import BaseModel, Visual
 
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
+class BernoulliModelOutput:
+    """Output of the Bernoulli model."""
+
+    is_anomaly: bool
+    variance: float
+    probability: float
+    observed_value: bool
 
 
 class BernoulliModel(BaseModel, Visual):
     """Univariate Bernoulli model with bayesian updating."""
+
+    def __init__(
+        self,
+        src: str,
+        dest: str,
+        parent: BaseModel | None = None,
+        scorer=Callable[[bool, float], bool],
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            src, dest, subscription=parent.subscription if parent else None
+        )
+
+        self.alpha: int = 0
+        self.beta: int = 0
+
+        self.success_probs: list[float] = []
+        self.success_var: list[float] = []
+        self.observed_variables: list[float] = []
 
     def to_dict(self) -> dict[str, list[Any]]:
         return {
@@ -23,10 +50,10 @@ class BernoulliModel(BaseModel, Visual):
             "observed_variables": self.observed_variables,
         }
 
-    def plot(self, ax: Figure | Axes | None = None):
-        if ax is None:
-            ax: plt.Axes = plt.gca()
+    def plot(self, ax: Axes | None = None):
         df = self.to_frame()
+
+        ax = ax or plt.gca()
 
         lower_bound = df["success_probs"] - 3 * df["success_var"].apply(np.sqrt)
         upper_bound = df["success_probs"] + 3 * df["success_var"].apply(np.sqrt)
@@ -38,7 +65,7 @@ class BernoulliModel(BaseModel, Visual):
             ax=ax,
             label="$P(\\mathrm{success})$",
             color="tab:blue",
-            legend="probability",
+            legend="probability",  # type: ignore
         )
         positive = df[df["observed_variables"] == True]
         if positive.shape[0] > 1:
@@ -66,26 +93,12 @@ class BernoulliModel(BaseModel, Visual):
         ax.set_title(f"Probability of success")
         ax.set_ylabel("$p$")
         legend = plt.legend()
-        for item in legend.legendHandles:
+        for item in legend.legendHandles:  # type: ignore
             try:
                 item.set_alpha(1)
                 item._legmarker.set_alpha(1)
             except AttributeError:
                 pass
-
-    def __init__(
-        self, src: str, dest: str, parent: BaseModel | None = None, *args, **kwargs
-    ) -> None:
-        super().__init__(
-            src, dest, subscription=parent.subscription if parent else None
-        )
-
-        self.alpha: int = 0
-        self.beta: int = 0
-
-        self.success_probs: list[float] = []
-        self.success_var: list[float] = []
-        self.observed_variables: list[float] = []
 
     def log(self, ts, observed_variable: bool) -> None:
         """Log a new observation."""
@@ -100,3 +113,6 @@ class BernoulliModel(BaseModel, Visual):
             (self.alpha * self.beta)
             / ((self.alpha + self.beta) ** 2 * (self.alpha + self.beta + 1))
         )
+
+
+# TODO: figure a way to allow scoring for anomalies based on value, prob, or both. Also consider option to run anomalies only after observing both classes

@@ -1,3 +1,4 @@
+import pydantic
 from enum import Enum
 
 from typing import Any
@@ -12,15 +13,26 @@ from traced_v2.models.base_model import BaseModel, Visual
 from traced_v2.models.bernoulli import BernoulliModel
 from traced_v2.models.graph import GraphModel
 from traced_v2.models.multinomial import MultinomialModel
-from traced_v2.models.normal import NormalModel
+from traced_v2.models.normal import NormalModel, NormalModelOutput
 from traced_v2.models.poisson import PoissonModel
 from traced_v2.utils import create_hash, add_prefix
 
 
 class Mode(Enum):
+    """Agggregation mode for the trace model."""
     MEAN = "mean"
     WEIGHTED_MEAN = "w_mean"
     WEIGHTED_HARMONIC_MEAN = "w_h_mean"
+
+
+class TraceModelOutput(pydantic.BaseModel):
+    rtt_result: NormalModelOutput
+    rtt_mean_error: float
+    rtt_sum_error: float
+
+    ttl_result: NormalModelOutput
+    ttl_mean_error: float
+    ttl_sum_error: float
 
 
 class TraceModel(BaseModel, Visual):
@@ -46,15 +58,17 @@ class TraceModel(BaseModel, Visual):
         self.rtt_mean_errors = []
         self.ttl_mean_errors = []
 
-
-    def _calculate_anomaly_weights(self, rtt_anomalies, ttl_anomalies)-> tuple[np.ndarray, np.ndarray]:
+    def _calculate_anomaly_weights(
+        self, rtt_anomalies, ttl_anomalies
+    ) -> tuple[np.ndarray, np.ndarray]:
         rtt_anom_seq_weight = np.ones_like(rtt_anomalies, dtype=float)
         ttl_anom_seq_weight = np.ones_like(ttl_anomalies, dtype=float)
         # iterate from last to first
-        
+
         rtt_c = 1
         ttl_c = 1
-        
+
+        # calculate the index of node in anomaly sub-sequence
         for i in range(len(rtt_anomalies) - 1, 0, -1):
             rtt_anom_seq_weight[i] = rtt_c
             if rtt_anomalies[i]:
@@ -63,10 +77,10 @@ class TraceModel(BaseModel, Visual):
             ttl_anom_seq_weight[i] = ttl_c
             if ttl_anomalies[i]:
                 ttl_c += 1
-        
+
         # normalize
-        ttl_anom_seq_weight /= ttl_anom_seq_weight.sum() # type: ignore
-        rtt_anom_seq_weight /= rtt_anom_seq_weight.sum() # type: ignore
+        ttl_anom_seq_weight /= ttl_anom_seq_weight.sum()  # type: ignore
+        rtt_anom_seq_weight /= rtt_anom_seq_weight.sum()  # type: ignore
 
         return rtt_anom_seq_weight, ttl_anom_seq_weight
 
@@ -77,11 +91,11 @@ class TraceModel(BaseModel, Visual):
         ttl_score: float,
         rtt_error: list[float],
         ttl_error: list[float],
-    ) -> tuple[bool, float, float, bool, float, float]:
-        mean_rtt_error: float = np.mean(rtt_error) # type: ignore
+    ) -> TraceModelOutput:
+        mean_rtt_error: float = np.mean(rtt_error)  # type: ignore
         sum_rtt_error: float = np.sum(rtt_error)
 
-        mean_ttl_error: float = np.mean(ttl_error) # type: ignore
+        mean_ttl_error: float = np.mean(ttl_error)  # type: ignore
         sum_ttl_error: float = np.sum(ttl_error)
 
         self.rtt_sum_errors.append(sum_rtt_error)
@@ -91,13 +105,20 @@ class TraceModel(BaseModel, Visual):
 
         rtt = self.final_rtt.log(ts, rtt_score)
         ttl = self.final_ttl.log(ts, ttl_score)
-        return (rtt[0], mean_rtt_error, sum_rtt_error, ttl[0], mean_ttl_error, sum_ttl_error)
 
-    def log(self, ts: int, hops: list[str], rtts: list[float], ttls: list[int]) -> tuple[bool, float, float, bool, float, float]:
+        return TraceModelOutput(
+            rtt_result=rtt,
+            ttl_result=ttl,
+            rtt_mean_error=mean_rtt_error,
+            rtt_sum_error=sum_rtt_error,
+            ttl_mean_error=mean_ttl_error,
+            ttl_sum_error=sum_ttl_error,
+        )
+
+    def log(
+        self, ts: int, hops: list[str], rtts: list[float], ttls: list[int]
+    ) -> TraceModelOutput:
         super().log_timestamp(ts)
-
-        rtt_rate = []
-        ttl_rate = []
 
         rtt_errors = []
         ttl_errors = []
@@ -114,21 +135,16 @@ class TraceModel(BaseModel, Visual):
                 self.ttl_models[hop] = PoissonModel(self.src, hop)
 
             val = self.rtt_models[hop].log(ts, rtt)
-            # self.anomalies[-1], self.n_anomalies, mu, observed_value, sigma
 
-            rtt_anomalies.append(val[0])
-            rtt_anomaly_total.append(val[1])
-            rtt_rate.append((1 + val[3]) / (1 + val[2]))
-            # rtt_rate.append(val[3] - val[2])
-            rtt_errors.append(val[3] - val[2])
+            rtt_anomalies.append(val.is_anomaly)
+            rtt_anomaly_total.append(val.n_anomalies)
+            rtt_errors.append(val.error)
 
             val = self.ttl_models[hop].log(ts, ttl)
-            # (self.anomalies[-1], prob, self.lambdas[-1], observed_value, self.n_anomalies)
-            ttl_anomalies.append(val[0])
-            ttl_anomaly_total.append(val[4])
-            ttl_rate.append((1 + val[3]) / (1 + val[2]))
-            # ttl_rate.append(val[3] - val[2])
-            ttl_errors.append(val[3] - val[2])
+
+            ttl_anomalies.append(val.is_anomaly)
+            ttl_anomaly_total.append(val.n_anomalies)
+            ttl_errors.append(val.error)
 
         if self.mode == Mode.MEAN:
             return self._process(
@@ -138,29 +154,38 @@ class TraceModel(BaseModel, Visual):
                 rtt_errors,
                 ttl_errors,
             )
-        uniform_weights = np.ones_like(rtt_anomaly_total, dtype=float)
-        uniform_weights /= uniform_weights.sum() # type: ignore
+        uniform_w = np.ones_like(rtt_anomaly_total, dtype=float)
+        uniform_w /= uniform_w.sum()  # type: ignore
 
-        rtt_anomaly_weights = np.log1p(rtt_anomaly_total) 
-        rtt_anomaly_weights /= rtt_anomaly_weights.sum() # type: ignore
+        rtt_anomaly_w = np.log1p(rtt_anomaly_total)
+        rtt_anomaly_w /= rtt_anomaly_w.sum()  # type: ignore
 
         ttl_anomaly_weights = np.log1p(ttl_anomaly_total)
-        ttl_anomaly_weights /= ttl_anomaly_weights.sum() # type: ignore
+        ttl_anomaly_weights /= ttl_anomaly_weights.sum()  # type: ignore
 
-        rtt_anom_seq_weight, ttl_anom_seq_weight = self._calculate_anomaly_weights(rtt_anomalies, ttl_anomalies)
-        
+        rtt_seq_w, ttl_anom_seq_weight = self._calculate_anomaly_weights(
+            rtt_anomalies, ttl_anomalies
+        )
+
         if self.mode == Mode.WEIGHTED_MEAN:
-            rtt_w =  np.mean([uniform_weights, rtt_anomaly_weights, rtt_anom_seq_weight], axis=0).T
-            ttl_w = np.mean([uniform_weights, ttl_anomaly_weights, ttl_anom_seq_weight], axis=0).T
-        
-        else:
-            rtt_w = hmean([uniform_weights, rtt_anomaly_weights, rtt_anom_seq_weight], axis=0).T
-            ttl_w = hmean([uniform_weights, ttl_anomaly_weights, ttl_anom_seq_weight], axis=0).T
-        
-        rtt_rate = np.array(rtt_errors)
-        ttl_rate = np.array(ttl_errors)
+            rtt_w = np.mean([uniform_w, rtt_anomaly_w, rtt_seq_w], axis=0).T
+            ttl_w = np.mean(
+                [uniform_w, ttl_anomaly_weights, ttl_anom_seq_weight], axis=0
+            ).T
 
-        return self._process(ts, rtt_rate @ rtt_w, ttl_rate @ ttl_w, rtt_errors, ttl_errors)
+        else:
+            rtt_w = hmean([uniform_w, rtt_anomaly_w, rtt_seq_w], axis=0).T
+            ttl_w = hmean(
+                [uniform_w, ttl_anomaly_weights, ttl_anom_seq_weight], axis=0
+            ).T
+
+        return self._process(
+            ts,
+            np.array(rtt_errors) @ rtt_w,
+            np.array(ttl_errors) @ ttl_w,
+            rtt_errors,
+            ttl_errors,
+        )
 
     def to_dict(self) -> dict[str, list[Any]]:
         return {
@@ -172,18 +197,17 @@ class TraceModel(BaseModel, Visual):
             "ttl_mean_errors": self.ttl_mean_errors,
         }
 
-    def plot(self, ax:  Axes | None = None, **kwargs):
-        if ax is None:
-            ax = plt.gca()
-
+    def plot(self, ax: Axes | None = None, **kwargs):
         df = self.to_frame()
+        ax = ax or plt.gca()
 
         anomaly_cnt = df["trace_ttl_anomalies"] + df["trace_rtt_anomalies"]
 
-        if 'resample' in kwargs:
-            anomaly_cnt = anomaly_cnt.resample(kwargs['resample']).sum()
+        if "resample" in kwargs:
+            anomaly_cnt = anomaly_cnt.resample(kwargs["resample"]).sum()
 
-        plt.plot(kind='bar', label="Number of anomalies", ax=ax, **kwargs)
+        plt.plot(kind="bar", label="Number of anomalies", ax=ax, **kwargs)
+
 
 class TraceAnalyzer(BaseModel):
     def __init__(self, src: str, dest: str, *args, **kwargs) -> None:
@@ -225,6 +249,7 @@ class TraceAnalyzer(BaseModel):
         if "asns" not in data:
             return
 
+        # TODO: Incorporate ModelOutputs into the trace model
         if self.as_model is None and data["hops"][-1] == self.dest:
             # lazy init the asn graph model, since we do not know the as apriori
             self.as_model = GraphModel(
@@ -242,21 +267,13 @@ class TraceAnalyzer(BaseModel):
             self.as_model.log(ts, data["asns"])
 
         delta_ttls = [ttl - i for i, ttl in enumerate(data["ttls"])]
-        out = self.trace_model.log(
-            ts, data["hops"], data["rtts"], delta_ttls
-        )
+        out = self.trace_model.log(ts, data["hops"], data["rtts"], delta_ttls)
 
         self.path_complete.log(ts, data["path_complete"])
         self.destination_reached.log(ts, data["destination_reached"])
         self.looping.log(ts, data["looping"])
 
-        tmp = []
-        for x in data["asns"]:
-            if tmp and tmp[-1] == x:
-                continue
-            tmp.append(x)
-
-        self.path_probs.log(ts, create_hash("".join(map(str, tmp))))
+        self.path_probs.log(ts, create_hash("".join(map(str, set(data["asns"])))))
         self.n_hops_model.log(ts, len(data["hops"]))
 
     def to_dict(self) -> dict[str, list[Any]]:

@@ -36,7 +36,7 @@ class Graph:
 
     def get_edges(self) -> dict[Hashable, dict[Hashable, int]]:
         """Return the edges."""
-        return self.edges
+        return dict(self.edges)
 
     def to_graph(self) -> nx.Graph:
         data = {
@@ -45,7 +45,7 @@ class Graph:
             }
             for src, value in self.get_edges().items()
         }
-        return nx.from_dict_of_dicts(data, create_using=nx.DiGraph)
+        return nx.from_dict_of_dicts(data, create_using=nx.DiGraph)  # type: ignore
 
 
 class ForgettingGraph(Graph):
@@ -82,7 +82,7 @@ class ForgettingGraph(Graph):
     def get_counts(self) -> dict[Hashable, dict[Hashable, int]]:
         """Get the counts of edges."""
         counts = {node: queue.data for node, queue in self.edge_queues.items()}
-        return counts
+        return counts  # type: ignore
 
     def get_prob(self, src: str, dest: str) -> float:
         """Get the probability of an edge from src to dest."""

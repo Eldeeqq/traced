@@ -1,4 +1,5 @@
 """Poisson model for anomaly detection."""
+import pydantic
 
 from math import exp, factorial
 from typing import Any
@@ -11,6 +12,26 @@ from traced_v2.models.base_model import BaseModel, Visual
 
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
+
+
+class PoissonModelOutput(pydantic.BaseModel):
+    """Output of the Poisson model."""
+
+    is_anomaly: bool
+    n_anomalies: int
+    probability: float
+    expected_value: float
+    observed_value: float
+
+    @property
+    def error(self) -> float:
+        """Return the error of the observation."""
+        return self.observed_value - self.expected_value
+
+    @property
+    def error_rate(self) -> float:
+        """Return the error rate of the observation."""
+        return self.observed_value / self.expected_value
 
 
 class PoissonModel(BaseModel, Visual):
@@ -40,11 +61,11 @@ class PoissonModel(BaseModel, Visual):
 
     def pdf(self, value: float) -> float:
         """Return the probability of observing `value`."""
-        return self.lambdas[-1] ** value * exp(-self.lambdas[-1]) / factorial(value)
+        return (
+            self.lambdas[-1] ** value * exp(-self.lambdas[-1]) / factorial(round(value))
+        )
 
-    def log(
-        self, ts: int, observed_value: float
-    ) -> tuple[bool, float, float, float, int]:
+    def log(self, ts: int, observed_value: float) -> PoissonModelOutput:
         """Log a new observation and return whether it is an anomaly."""
         super().log_timestamp(ts)
 
@@ -58,12 +79,12 @@ class PoissonModel(BaseModel, Visual):
         self.anomalies.append(prob < self.threshold)
         self.n_anomalies += int(self.anomalies[-1])
 
-        return (
-            self.anomalies[-1],
-            prob,
-            self.lambdas[-1],
-            observed_value,
-            self.n_anomalies,
+        return PoissonModelOutput(
+            is_anomaly=self.anomalies[-1],
+            probability=prob,
+            expected_value=self.lambdas[-1],
+            observed_value=observed_value,
+            n_anomalies=self.n_anomalies,
         )
 
     def to_dict(self) -> dict[str, list[Any]]:
@@ -75,13 +96,15 @@ class PoissonModel(BaseModel, Visual):
             "anomalies": self.anomalies[1:],
         }
 
-    def plot(self, ax: Figure | Axes | None = None):
+    def plot(self, ax: Axes | None = None, **kwargs) -> None:
         """Plot the model statistics."""
         df = self.to_frame(omit_first=True)
         if ax is None:
             ax = plt.figure().add_subplot()
 
-        ax.set_title("Probs")
+        title = f'Anomalies on {kwargs.get("kind", "TTL")}'
+        ax.set_title(title)
+
         anomalies = df[df["anomalies"]]
 
         df["probabilities"].plot(ax=ax, label="probabilities")

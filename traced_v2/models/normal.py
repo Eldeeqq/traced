@@ -1,23 +1,41 @@
-"""Normal models.
-
-This module contains the NormalModel class, which implements a normal model with bayesian updating.
+"""This module contains the NormalModel class, which implements a normal model with bayesian updating.
 """
 
 from math import pi, sqrt
+from typing import Any
 
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.pyplot import Axes
+import pydantic
 
 from traced_v2.models.base_model import BaseModel, Visual
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 
-_DENOMINATOR = sqrt(2 * pi)
+
+class NormalModelOutput(pydantic.BaseModel):
+    """Output of the Normal model."""
+
+    is_anomaly: bool
+    n_anomalies: int
+    expected_value: float
+    observed_value: float
+    sigma: float
+
+    @property
+    def error(self):
+        """Return the error of the observation."""
+        return self.observed_value - self.expected_value
+
+    @property
+    def error_rate(self):
+        """Return the error rate of the observation."""
+        return self.observed_value / self.expected_value
 
 
 class NormalModel(BaseModel, Visual):
-    """Univariate Normal model with bayesian updating."""
+    """Univariate Normal model with Bayesian updating."""
 
     def __init__(
         self,
@@ -31,7 +49,7 @@ class NormalModel(BaseModel, Visual):
         gamma: float = 0.5,
         sigma_factor: float = 4.0,
         parent: BaseModel | None = None,
-    ):
+    ) -> None:
         super().__init__(
             src, dest, subscription=parent.subscription if parent else None
         )
@@ -49,9 +67,7 @@ class NormalModel(BaseModel, Visual):
         self.observed_values: list[float] = [mu_0]
         self.anomalies: list[bool] = [False]
 
-    def log(
-        self, ts: int, observed_value: float
-    ) -> tuple[bool, int, float, float, float]:
+    def log(self, ts: int, observed_value: float) -> NormalModelOutput:
         """Log a new observation and return whether it is an anomaly."""
         super().log_timestamp(ts)
 
@@ -76,9 +92,16 @@ class NormalModel(BaseModel, Visual):
             else observed_value > ub
         )
         self.n_anomalies += self.anomalies[-1]
-        return self.anomalies[-1], self.n_anomalies, mu, observed_value, sigma
 
-    def to_dict(self) -> dict[str, list[float]]:
+        return NormalModelOutput(
+            is_anomaly=self.anomalies[-1],
+            n_anomalies=self.n_anomalies,
+            expected_value=mu_2,
+            observed_value=observed_value,
+            sigma=sigma,
+        )
+
+    def to_dict(self) -> dict[str, list[Any]]:
         """Convert the model statistics to a dictionary."""
         return {
             "observed_values": self.observed_values[1:],
@@ -87,18 +110,17 @@ class NormalModel(BaseModel, Visual):
             "anomalies": self.anomalies[1:],
         }
 
-    def plot(self, ax: Figure | Axes | None = None, **kwargs):
+    def plot(self, ax: Axes | None = None, **kwargs) -> None:
         """Plot the model statistics."""
-
-        if ax is None:
-            ax: Axes = plt.gca()
-
         df = self.to_frame()
+
+        ax = ax or plt.gca()
 
         if "resample" in kwargs:
             df = (
                 df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean()
             )
+
         df["lower_bound"] = df["expected_values"] - self.sigma_factor * df["sigmas"]
         df["upper_bound"] = df["expected_values"] + self.sigma_factor * df["sigmas"]
 
