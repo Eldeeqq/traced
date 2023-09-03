@@ -4,17 +4,28 @@ from datetime import datetime
 from typing import Any, Hashable
 
 import networkx as nx
+import pydantic
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.pyplot import Axes
 
-from traced_v2.models.normal import NormalModel
 from traced_v2.models.base_model import BaseModel, Visual
-from traced_v2.utils import create_hash, add_prefix
-
+from traced_v2.models.normal import NormalModel
+from traced_v2.models.queue import Queue
+from traced_v2.utils import add_prefix, create_hash
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
+
+
+class GraphModelOutput(pydantic.BaseModel):
+    """Output of the Graph model."""
+
+    is_anomaly: bool
+    segment_probs: list[float]
+    segment_neg_log_probs: list[float]
+    path_prob: float
+    path_neg_log_prob: float
 
 
 class Graph:
@@ -51,33 +62,10 @@ class Graph:
 class ForgettingGraph(Graph):
     """Graph model for trace modelling in network graph with forgetting."""
 
-    class Queue:
-        """Queue with a max size."""
-
-        def __init__(self, max_size: int | None = None):
-            self._queue = list()
-            self.max_size = max_size
-            self.counts_queue = defaultdict(lambda: 0)
-
-        def add(self, item: Any) -> None:
-            """Add an item to the queue."""
-            if self.max_size and len(self._queue) == self.max_size:
-                front = self._queue.pop(0)
-                self.counts_queue[front] -= 1
-                if self.counts_queue[front] == 0:
-                    del self.counts_queue[front]
-            self._queue.append(item)
-            self.counts_queue[item] += 1
-
-        @property
-        def data(self) -> dict[str, int]:
-            """Get the data in the queue."""
-            return self.counts_queue
-
     def __init__(self, max_size: int = 500):
         super().__init__()
         self.max_size = max_size
-        self.edge_queues = defaultdict(lambda: self.Queue(max_size))
+        self.edge_queues = defaultdict(lambda: Queue(max_size))
 
     def get_counts(self) -> dict[Hashable, dict[Hashable, int]]:
         """Get the counts of edges."""
@@ -110,7 +98,7 @@ class GraphModel(BaseModel, Visual):
         "global_forgetting_ip": ForgettingGraph(),
         "global_as": Graph(),
         "global_forgetting_as": ForgettingGraph(),
-    }
+    }  # Registry for shared graphs
 
     REGISTRY_KEYS = list(REGISTRY.keys())
 
@@ -129,12 +117,13 @@ class GraphModel(BaseModel, Visual):
         self,
         src: str,
         dest: str,
-        graph_subscription: str = "global_forgetting",
+        graph_subscription: None | str = None,
         parent: BaseModel | None = None,
     ) -> None:
         super().__init__(
             src, dest, subscription=parent.subscription if parent else None
         )
+        graph_subscription = graph_subscription or "global_forgetting"
         self.graph: Graph = GraphModel.REGISTRY[graph_subscription]
         self.probs = []
         self.prob_model: NormalModel = NormalModel(
@@ -147,27 +136,32 @@ class GraphModel(BaseModel, Visual):
             alpha_0=1,
             beta_0=1,
         )
-        # TODO: create a NormalModel subscriber here
 
-    def log(self, ts: int, observed_value: list[Hashable]):
+    def log(self, ts: int, observed_value: list[Hashable]) -> GraphModelOutput:
         """Log a trace."""
         super().log_timestamp(ts)
         probs = []
         log_prob = []
 
-        if not observed_value:
-            self.probs.append(0)
-            return self.prob_model.log(ts, -np.log1p(0))
-
         current = observed_value[0]
         for item in observed_value[1:]:
             p = self.graph.get_prob(current, item)
-            log_prob.append(np.log1p(p))
+            log_prob.append(-np.log1p(p))
             probs.append(p)
             self.graph.add_edge(current, item)
             current = item
+
         self.probs.append(np.prod(probs))
-        return self.prob_model.log(ts, -np.sum(log_prob))
+        path_neg_log_prob: float = np.sum(log_prob)  # type: ignore
+        output = self.prob_model.log(ts, path_neg_log_prob)  # type: ignore
+
+        return GraphModelOutput(
+            is_anomaly=output.is_anomaly,
+            segment_probs=probs,
+            segment_neg_log_probs=log_prob,
+            path_prob=self.probs[-1],
+            path_neg_log_prob=path_neg_log_prob,
+        )
 
     def to_dict(self) -> dict[str, list[Any]]:
         """Convert the model statistics to a dictionary."""
@@ -181,9 +175,10 @@ class GraphModel(BaseModel, Visual):
         ax: Figure | Axes | None = None,
         layout: dict[Hashable, tuple[float, float]] | None = None,
     ):
-        if not ax:
-            ax = plt.gca()
+        ax = ax or plt.gca()
+
         graph = self.graph.to_graph()
-        if not layout:
-            layout = nx.random_layout(graph)
+
+        layout = layout or nx.random_layout(graph, seed=42)  # type: ignore
+
         nx.draw(graph, layout, with_labels=True, ax=ax)

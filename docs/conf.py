@@ -2,7 +2,11 @@
 
 import os
 import sys
+from datetime import date
+
 sys.path.insert(0, os.path.abspath('..'))
+
+...
 
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -12,9 +16,9 @@ sys.path.insert(0, os.path.abspath('..'))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Traced'
-copyright = '2023, Jan Perina'
+copyright = f'{date.today().year}, Jan Perina'
 author = 'Jan Perina'
-release = '0.0.1'
+release = '0.2.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

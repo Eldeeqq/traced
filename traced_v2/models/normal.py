@@ -1,13 +1,12 @@
 """This module contains the NormalModel class, which implements a normal model with bayesian updating.
 """
 
-from math import pi, sqrt
 from typing import Any
+import numpy as np
 
-from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.pyplot import Axes
 import pydantic
+from matplotlib import pyplot as plt
+from matplotlib.pyplot import Axes
 
 from traced_v2.models.base_model import BaseModel, Visual
 
@@ -22,6 +21,7 @@ class NormalModelOutput(pydantic.BaseModel):
     expected_value: float
     observed_value: float
     sigma: float
+    pdf: float
 
     @property
     def error(self):
@@ -67,6 +67,11 @@ class NormalModel(BaseModel, Visual):
         self.observed_values: list[float] = [mu_0]
         self.anomalies: list[bool] = [False]
 
+    def pdf(self, value: float) -> float:
+        return (1 / (self.sigmas[-1] * np.sqrt(2 * np.pi))) * np.exp(
+            -0.5 * ((value - self.expected_values[-1]) / self.sigmas[-1]) ** 2
+        )
+
     def log(self, ts: int, observed_value: float) -> NormalModelOutput:
         """Log a new observation and return whether it is an anomaly."""
         super().log_timestamp(ts)
@@ -80,7 +85,7 @@ class NormalModel(BaseModel, Visual):
         mu_2 = mu + self.gamma / self.get_n() * (observed_value - mu)
         self.expected_values.append(mu_2)
 
-        sigma = sqrt(self.beta / (self.alpha + 1))
+        sigma = np.sqrt(self.beta / (self.alpha + 1))
         self.sigmas.append(sigma)
 
         ub = mu_2 + self.sigma_factor * sigma
@@ -99,6 +104,7 @@ class NormalModel(BaseModel, Visual):
             expected_value=mu_2,
             observed_value=observed_value,
             sigma=sigma,
+            pdf=self.pdf(observed_value),
         )
 
     def to_dict(self) -> dict[str, list[Any]]:

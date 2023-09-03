@@ -4,18 +4,18 @@ from collections import defaultdict
 from typing import Any, Hashable
 
 import numpy as np
+import pydantic
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-import pydantic
 
 from traced_v2.models.base_model import BaseModel, Visual
+from traced_v2.models.queue import Queue
 
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 class MultinomialModelOutput(pydantic.BaseModel):
     """Output of the Multinomial model."""
 
-    is_anomaly: bool
     variance: float
     probability: float
     observed_value: Hashable
@@ -70,7 +70,6 @@ class MultinomialModel(BaseModel, Visual):
             probability=posterior_prob,
             observed_value=observed_value,
             variance=var,
-            is_anomaly=prior - posterior_prob > 5,
         )
 
     def to_dict(self) -> dict[str, list[Any]]:
@@ -88,16 +87,47 @@ class MultinomialModel(BaseModel, Visual):
         title = f'Probability of {kwargs.get("kind", "classes")}'
         ax.set_title(title)
         for i, gdf in df.groupby("observed_variables"):
-            lower_bound = gdf["probabilities"] - 3 * gdf["variance"].apply(np.sqrt)
-            upper_bound = gdf["probabilities"] + 3 * gdf["variance"].apply(np.sqrt)
-            ax.fill_between(gdf.index, lower_bound, upper_bound, alpha=0.15)  # type: ignore
-            gdf["probabilities"].plot(ax=ax, label=i)
+            if gdf.shape[0] > 2:
+                lower_bound = gdf["probabilities"] - 3 * gdf["variance"].apply(np.sqrt)
+                upper_bound = gdf["probabilities"] + 3 * gdf["variance"].apply(np.sqrt)
+                ax.fill_between(gdf.index, lower_bound, upper_bound, alpha=0.15)  # type: ignore
+                gdf["probabilities"].plot(ax=ax, label=i)
+            else:
+                gdf["probabilities"].plot(ax=ax, label=i, marker="o")
 
         ax.legend()
 
 
 class ForgettingMultinomialModel(MultinomialModel):
-    pass
+    """Multinomial model with forgetting."""
 
+    def __init__(
+        self, src: str, dest: str, parent: BaseModel | None = None, gamma: float = 1
+    ) -> None:
+        super().__init__(src=src, dest=dest, parent=parent, gamma=gamma)
+        self.queue = Queue(max_size=500)
+        self.category_counts = self.queue.counts_queue
 
-# TODO: implement forgetting multinomial model
+    def log(self, ts: int, observed_value: Hashable) -> MultinomialModelOutput:
+        super().log_timestamp(ts)
+        self.seen_categories.add(observed_value)
+        self.queue.add(observed_value)
+        self.counter = self.gamma * sum(self.category_counts.values())
+
+        posterior_prob = (self.category_counts[observed_value] + 1) / (
+            self.counter + len(self.seen_categories)
+        )
+        a = self.category_counts[observed_value]
+        b = self.counter - a  # TODO: counter should equal to sum of counts
+        var = (a * b) / ((self.counter**2) * (self.counter + 1))
+
+        self.variance.append(var)
+        self.category_probs[observed_value] = posterior_prob
+        self.probabilities.append(posterior_prob)
+        self.observed_variables.append(observed_value)
+
+        return MultinomialModelOutput(
+            probability=posterior_prob,
+            observed_value=observed_value,
+            variance=var,
+        )

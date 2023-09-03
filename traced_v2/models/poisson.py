@@ -1,15 +1,12 @@
 """Poisson model for anomaly detection."""
-import pydantic
-
 from math import exp, factorial
 from typing import Any
 
+import pydantic
 from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
 from matplotlib.pyplot import Axes
 
 from traced_v2.models.base_model import BaseModel, Visual
-
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
 
@@ -19,7 +16,7 @@ class PoissonModelOutput(pydantic.BaseModel):
 
     is_anomaly: bool
     n_anomalies: int
-    probability: float
+    pdf: float
     expected_value: float
     observed_value: float
 
@@ -81,7 +78,7 @@ class PoissonModel(BaseModel, Visual):
 
         return PoissonModelOutput(
             is_anomaly=self.anomalies[-1],
-            probability=prob,
+            pdf=prob,
             expected_value=self.lambdas[-1],
             observed_value=observed_value,
             n_anomalies=self.n_anomalies,

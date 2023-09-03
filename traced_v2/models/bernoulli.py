@@ -1,17 +1,16 @@
 """Module for the MultinomialModel class."""
 
 from typing import Any, Callable
-
+import pydantic
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 
 from traced_v2.models.base_model import BaseModel, Visual
 
 
 # pylint: disable=too-many-arguments, fixme, line-too-long, too-many-instance-attributes, invalid-name
-class BernoulliModelOutput:
+class BernoulliModelOutput(pydantic.BaseModel):
     """Output of the Bernoulli model."""
 
     is_anomaly: bool
@@ -90,7 +89,7 @@ class BernoulliModel(BaseModel, Visual):
                 alpha=0.025,
             )
         ax.set_ylabel("$P(\\mathrm{success})$")
-        ax.set_title(f"Probability of success")
+        ax.set_title("Probability of success")
         ax.set_ylabel("$p$")
         legend = plt.legend()
         for item in legend.legendHandles:  # type: ignore
@@ -100,7 +99,7 @@ class BernoulliModel(BaseModel, Visual):
             except AttributeError:
                 pass
 
-    def log(self, ts, observed_variable: bool) -> None:
+    def log(self, ts, observed_variable: bool) -> BernoulliModelOutput:
         """Log a new observation."""
         super().log_timestamp(ts)
 
@@ -113,6 +112,12 @@ class BernoulliModel(BaseModel, Visual):
             (self.alpha * self.beta)
             / ((self.alpha + self.beta) ** 2 * (self.alpha + self.beta + 1))
         )
+        return BernoulliModelOutput(
+            is_anomaly=False,
+            variance=self.success_var[-1],
+            probability=self.success_probs[-1],
+            observed_value=observed_variable,
+        )
 
-
-# TODO: figure a way to allow scoring for anomalies based on value, prob, or both. Also consider option to run anomalies only after observing both classes
+# TODO: figure a way to allow scoring for anomalies based on value, prob, or both.
+# Also consider option to run anomalies only after observing both classes
