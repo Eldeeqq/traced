@@ -78,11 +78,13 @@ class NormalModel(BaseModel, Visual):
 
         self.observed_values.append(observed_value)
         mu = self.expected_values[-1]
+        n = self.get_n() 
+        ratio = (n/(n+1))
 
         self.alpha += self.gamma
-        self.beta += self.gamma * (observed_value - mu) ** 2
-
-        mu_2 = mu + self.gamma / self.get_n() * (observed_value - mu)
+        self.beta += self.gamma * ratio * (observed_value - mu) ** 2
+        # mu_2 = mu + self.gamma / self.get_n() * (observed_value - mu)
+        mu_2 = mu + 1/n * (observed_value - mu)
         self.expected_values.append(mu_2)
 
         sigma = np.sqrt(self.beta / (self.alpha + 1))

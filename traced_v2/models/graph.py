@@ -131,10 +131,11 @@ class GraphModel(BaseModel, Visual):
             dest,
             parent=self,
             one_sided=True,
-            mu_0=-2,
+            mu_0=-7,
             sigma_0=1,
             alpha_0=1,
             beta_0=1,
+            gamma=0.75
         )
 
     def log(self, ts: int, observed_value: list[Hashable]) -> GraphModelOutput:

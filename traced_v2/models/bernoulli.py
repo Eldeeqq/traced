@@ -1,8 +1,9 @@
 """Module for the MultinomialModel class."""
 
 from typing import Any, Callable
-import pydantic
+
 import numpy as np
+import pydantic
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 
@@ -41,12 +42,15 @@ class BernoulliModel(BaseModel, Visual):
         self.success_probs: list[float] = []
         self.success_var: list[float] = []
         self.observed_variables: list[float] = []
+        self.anomalies: list[bool] = []
+        self.scorer = scorer or (lambda x, y: False)
 
     def to_dict(self) -> dict[str, list[Any]]:
         return {
             "success_probs": self.success_probs,
             "success_var": self.success_var,
             "observed_variables": self.observed_variables,
+            "anomalies": self.anomalies,
         }
 
     def plot(self, ax: Axes | None = None):
@@ -56,6 +60,7 @@ class BernoulliModel(BaseModel, Visual):
 
         lower_bound = df["success_probs"] - 3 * df["success_var"].apply(np.sqrt)
         upper_bound = df["success_probs"] + 3 * df["success_var"].apply(np.sqrt)
+        
         ax.fill_between(df.index, lower_bound, upper_bound, facecolor="tab:blue", alpha=0.3)  # type: ignore
         ax.plot(df.index, upper_bound, color="tab:blue", alpha=0.3)
         ax.plot(df.index, lower_bound, color="tab:blue", alpha=0.3)
@@ -66,8 +71,12 @@ class BernoulliModel(BaseModel, Visual):
             color="tab:blue",
             legend="probability",  # type: ignore
         )
+
+        p = df["success_probs"].mean()
+
         positive = df[df["observed_variables"] == True]
         if positive.shape[0] > 1:
+          
             positive.astype(int).plot(
                 ax=ax,
                 y="observed_variables",
@@ -75,7 +84,17 @@ class BernoulliModel(BaseModel, Visual):
                 color="green",
                 marker="o",
                 linestyle="None",
-                alpha=0.025,
+                alpha=0.0025 if p>0.20 else 0.5,
+            )
+
+            positive[positive["anomalies"]].astype(int).plot(
+                ax=ax,
+                y="observed_variables",
+                label="anomaly",
+                color="black",
+                marker="x",
+                linestyle="None",
+                alpha=0.9,
             )
         negative = df[df["observed_variables"] == False]
         if negative.shape[0] > 1:
@@ -86,12 +105,22 @@ class BernoulliModel(BaseModel, Visual):
                 color="red",
                 marker="o",
                 linestyle="None",
-                alpha=0.025,
+                alpha=0.0025 if (1-p)>0.20 else 0.5,
+            )
+            negative[negative["anomalies"]].astype(int).plot(
+                ax=ax,
+                y="observed_variables",
+                label="",
+                color="black",
+                marker="x",
+                linestyle="None",
+                alpha=0.9,
             )
         ax.set_ylabel("$P(\\mathrm{success})$")
         ax.set_title("Probability of success")
         ax.set_ylabel("$p$")
         legend = plt.legend()
+        # set legebd alpha to 1
         for item in legend.legendHandles:  # type: ignore
             try:
                 item.set_alpha(1)
@@ -112,12 +141,10 @@ class BernoulliModel(BaseModel, Visual):
             (self.alpha * self.beta)
             / ((self.alpha + self.beta) ** 2 * (self.alpha + self.beta + 1))
         )
+        self.anomalies.append(self.scorer(observed_variable, self.success_probs[-1]))
         return BernoulliModelOutput(
-            is_anomaly=False,
+            is_anomaly=self.anomalies[-1],
             variance=self.success_var[-1],
             probability=self.success_probs[-1],
             observed_value=observed_variable,
         )
-
-# TODO: figure a way to allow scoring for anomalies based on value, prob, or both.
-# Also consider option to run anomalies only after observing both classes

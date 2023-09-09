@@ -8,3 +8,13 @@ def create_hash(val: str) -> str:
 
 def add_prefix(prefix: str, data: dict[str, Any]) -> dict[str, Any]:
     return {f"{prefix}_{k}": v for k, v in data.items()}
+
+
+def remove_duplicates(data: list[Any]) -> list[Any]:
+    curr = data[0]
+    resp = [curr]
+    for val in data[1:]:
+        if val != curr:
+            resp.append(val)
+            curr = val
+    return resp
