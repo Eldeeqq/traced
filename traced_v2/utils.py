@@ -2,8 +2,8 @@ from hashlib import sha1
 from typing import Any
 
 
-def create_hash(val: str) -> str:
-    return sha1(val.encode()).hexdigest()
+def create_hash(val: str, max_size:int=12) -> str:
+    return sha1(val.encode()).hexdigest()[:max_size]
 
 
 def add_prefix(prefix: str, data: dict[str, Any]) -> dict[str, Any]:

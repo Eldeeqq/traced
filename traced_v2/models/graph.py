@@ -4,8 +4,8 @@ from datetime import datetime
 from typing import Any, Hashable
 
 import networkx as nx
-import pydantic
 import numpy as np
+import pydantic
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.pyplot import Axes
@@ -104,12 +104,12 @@ class GraphModel(BaseModel, Visual):
 
     @classmethod
     def get_or_create_subscription(
-        cls, forgetting: bool = True, local: bool = True
+        cls, forgetting: bool = True, local: bool = True, key: str | None = None
     ) -> str:
         if not local:
             return "global_forgetting" if forgetting else "global"
 
-        key = create_hash(str(datetime.now()))
+        key = key or create_hash(str(datetime.now()))
         cls.REGISTRY[key] = ForgettingGraph() if forgetting else Graph()
         return key
 
@@ -135,7 +135,7 @@ class GraphModel(BaseModel, Visual):
             sigma_0=1,
             alpha_0=1,
             beta_0=1,
-            gamma=0.75
+            gamma=0.75,
         )
 
     def log(self, ts: int, observed_value: list[Hashable]) -> GraphModelOutput:
@@ -143,7 +143,7 @@ class GraphModel(BaseModel, Visual):
         super().log_timestamp(ts)
         probs = []
         log_prob = []
-
+        observed_value = [self.src] + observed_value  # TODO: check if this makes sense
         current = observed_value[0]
         for item in observed_value[1:]:
             p = self.graph.get_prob(current, item)

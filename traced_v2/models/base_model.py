@@ -41,6 +41,8 @@ class BaseModel(ABC):
 
     def log_timestamp(self, ts: int) -> None:
         """Log a new timestamp."""
+        self.n += 1
+
         if self.is_subscribed:
             return
 

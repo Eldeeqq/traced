@@ -60,7 +60,7 @@ class BernoulliModel(BaseModel, Visual):
 
         lower_bound = df["success_probs"] - 3 * df["success_var"].apply(np.sqrt)
         upper_bound = df["success_probs"] + 3 * df["success_var"].apply(np.sqrt)
-        
+
         ax.fill_between(df.index, lower_bound, upper_bound, facecolor="tab:blue", alpha=0.3)  # type: ignore
         ax.plot(df.index, upper_bound, color="tab:blue", alpha=0.3)
         ax.plot(df.index, lower_bound, color="tab:blue", alpha=0.3)
@@ -76,7 +76,6 @@ class BernoulliModel(BaseModel, Visual):
 
         positive = df[df["observed_variables"] == True]
         if positive.shape[0] > 1:
-          
             positive.astype(int).plot(
                 ax=ax,
                 y="observed_variables",
@@ -84,7 +83,7 @@ class BernoulliModel(BaseModel, Visual):
                 color="green",
                 marker="o",
                 linestyle="None",
-                alpha=0.0025 if p>0.20 else 0.5,
+                alpha=0.0025 if p > 0.20 else 0.5,
             )
 
             positive[positive["anomalies"]].astype(int).plot(
@@ -105,7 +104,7 @@ class BernoulliModel(BaseModel, Visual):
                 color="red",
                 marker="o",
                 linestyle="None",
-                alpha=0.0025 if (1-p)>0.20 else 0.5,
+                alpha=0.0025 if (1 - p) > 0.20 else 0.5,
             )
             negative[negative["anomalies"]].astype(int).plot(
                 ax=ax,
