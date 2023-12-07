@@ -62,7 +62,7 @@ class Graph:
 class ForgettingGraph(Graph):
     """Graph model for trace modelling in network graph with forgetting."""
 
-    def __init__(self, max_size: int = 500):
+    def __init__(self, max_size: int = 1000):
         super().__init__()
         self.max_size = max_size
         self.edge_queues = defaultdict(lambda: Queue(max_size))
@@ -143,17 +143,17 @@ class GraphModel(BaseModel, Visual):
         super().log_timestamp(ts)
         probs = []
         log_prob = []
-        observed_value = [self.src] + observed_value  # TODO: check if this makes sense
+        observed_value = observed_value
         current = observed_value[0]
         for item in observed_value[1:]:
             p = self.graph.get_prob(current, item)
-            log_prob.append(-np.log1p(p))
+            log_prob.append(-np.log(max(p, 1e-30)))
             probs.append(p)
             self.graph.add_edge(current, item)
             current = item
 
         self.probs.append(np.prod(probs))
-        path_neg_log_prob: float = np.sum(log_prob)  # type: ignore
+        path_neg_log_prob: float = np.mean(log_prob or [1])  # type: ignore
         output = self.prob_model.log(ts, path_neg_log_prob)  # type: ignore
 
         return GraphModelOutput(

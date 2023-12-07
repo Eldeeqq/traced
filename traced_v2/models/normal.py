@@ -80,18 +80,18 @@ class NormalModel(BaseModel, Visual):
         mu = self.expected_values[-1]
         n = self.get_n()
         ratio = n / (n + 1)
-
+        # note: alpha and beta are swapped by accident
         self.alpha += self.gamma
         self.beta += self.gamma * ratio * (observed_value - mu) ** 2
         # mu_2 = mu + self.gamma / self.get_n() * (observed_value - mu)
-        mu_2 = mu + 1 / n * (observed_value - mu)
+        mu_2 = mu + 1 / (n + 1) * (observed_value - mu)
         self.expected_values.append(mu_2)
 
         sigma = np.sqrt(self.beta / (self.alpha + 1))
         self.sigmas.append(sigma)
 
-        ub = mu_2 + self.sigma_factor * sigma
-        lb = mu_2 - self.sigma_factor * sigma
+        ub = mu + self.sigma_factor * sigma
+        lb = mu - self.sigma_factor * sigma
 
         self.anomalies.append(
             observed_value > ub or observed_value < lb
@@ -171,4 +171,4 @@ class NormalModel(BaseModel, Visual):
 
         ax.legend(fancybox=True)
         ax.set_xlabel("time")
-        ax.set_ylabel("X")
+        ax.set_ylabel("Y")

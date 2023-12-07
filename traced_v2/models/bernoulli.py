@@ -1,6 +1,6 @@
 """Module for the MultinomialModel class."""
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import numpy as np
 import pydantic
@@ -28,7 +28,7 @@ class BernoulliModel(BaseModel, Visual):
         src: str,
         dest: str,
         parent: BaseModel | None = None,
-        scorer=Callable[[bool, float], bool],
+        scorer: Optional[Callable[[bool, float], bool]] = None,
         *args,
         **kwargs,
     ) -> None:
@@ -71,10 +71,7 @@ class BernoulliModel(BaseModel, Visual):
             color="tab:blue",
             legend="probability",  # type: ignore
         )
-
-        p = df["success_probs"].mean()
-
-        positive = df[df["observed_variables"] == True]
+        positive = df[df["observed_variables"]]
         if positive.shape[0] > 1:
             positive.astype(int).plot(
                 ax=ax,
@@ -83,19 +80,19 @@ class BernoulliModel(BaseModel, Visual):
                 color="green",
                 marker="o",
                 linestyle="None",
-                alpha=0.0025 if p > 0.20 else 0.5,
+                alpha=0.1,
             )
-
-            positive[positive["anomalies"]].astype(int).plot(
-                ax=ax,
-                y="observed_variables",
-                label="anomaly",
-                color="black",
-                marker="x",
-                linestyle="None",
-                alpha=0.9,
-            )
-        negative = df[df["observed_variables"] == False]
+            if any(self.anomalies):
+                positive[positive["anomalies"]].astype(int).plot(
+                    ax=ax,
+                    y="observed_variables",
+                    label="anomaly",
+                    color="black",
+                    marker="x",
+                    linestyle="None",
+                    alpha=0.9,
+                )
+        negative = df[~df["observed_variables"]]
         if negative.shape[0] > 1:
             negative.astype(int).plot(
                 ax=ax,
@@ -104,20 +101,21 @@ class BernoulliModel(BaseModel, Visual):
                 color="red",
                 marker="o",
                 linestyle="None",
-                alpha=0.0025 if (1 - p) > 0.20 else 0.5,
+                alpha=0.1,
             )
-            negative[negative["anomalies"]].astype(int).plot(
-                ax=ax,
-                y="observed_variables",
-                label="",
-                color="black",
-                marker="x",
-                linestyle="None",
-                alpha=0.9,
-            )
+            if any(self.anomalies):
+                negative[negative["anomalies"]].astype(int).plot(
+                    ax=ax,
+                    y="observed_variables",
+                    label="",
+                    color="black",
+                    marker="x",
+                    linestyle="None",
+                    alpha=0.9,
+                )
         ax.set_ylabel("$P(\\mathrm{success})$")
         ax.set_title("Probability of success")
-        ax.set_ylabel("$p$")
+        ax.set_ylabel("probability")
         legend = plt.legend()
         # set legebd alpha to 1
         for item in legend.legendHandles:  # type: ignore

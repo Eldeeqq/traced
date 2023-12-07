@@ -1,7 +1,7 @@
 from itertools import count
 from pathlib import Path
 from time import sleep
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
 
 import networkx as nx
 import numpy as np
@@ -63,7 +63,7 @@ class IP2Geo:
 
         queue = []
         for node in graph.nodes():
-            if not node in known:
+            if node not in known:
                 cnt = 0
                 for neighbor in graph.neighbors(node):
                     if neighbor in known:

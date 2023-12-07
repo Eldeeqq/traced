@@ -4,23 +4,29 @@ from typing import Any
 import numpy as np
 import pydantic
 from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
 from scipy.stats import hmean
 
 from traced_v2.models.base_model import BaseModel, Visual
-from traced_v2.models.bernoulli import BernoulliModel, BernoulliModelOutput
-from traced_v2.models.graph import GraphModel, GraphModelOutput
-from traced_v2.models.multinomial import (ForgettingMultinomialModel,
-                                          MultinomialModelOutput)
+from traced_v2.models.exponential import ExponentialModel
 from traced_v2.models.normal import NormalModel, NormalModelOutput
-from traced_v2.models.poisson import PoissonModel, PoissonModelOutput
-from traced_v2.utils import add_prefix, create_hash, remove_duplicates
+from traced_v2.models.poisson import PoissonModel
+from traced_v2.utils import add_prefix
+
+
+def filter_zeros(items: list[float]) -> list[float]:
+    tmp = [x for x in items if x] or [0]
+
+    # if len(tmp) == 1:
+    #     return tmp + [0] * (len(items)//2)
+
+    return tmp
 
 
 class Mode(Enum):
     """Agggregation mode for the trace model."""
 
     MEAN = "mean"
+    SUM = "sum"
     WEIGHTED_MEAN = "w_mean"
     WEIGHTED_HARMONIC_MEAN = "w_h_mean"
 
@@ -44,21 +50,42 @@ class TraceModel(BaseModel, Visual):
         dest: str,
         mode: Mode,
         parent: BaseModel | None = None,
+        shift: bool = False,
+        sigma_factor: float = 4,
+        ignore_zero_errors: bool = True,
     ) -> None:
         super().__init__(
             src, dest, subscription=parent.subscription if parent else None
         )
-        self.rtt_models: dict[str, NormalModel] = {}
+        self.rtt_models: dict[str, ExponentialModel] = {}
         self.ttl_models: dict[str, PoissonModel] = {}
         self.mode: Mode = Mode(mode)
-        self.final_rtt: NormalModel = NormalModel(src, dest, parent=self)
-        self.final_ttl: NormalModel = NormalModel(src, dest, parent=self)
+        self.shift = None if shift else 0
+        self.final_rtt: NormalModel = NormalModel(
+            src,
+            dest,
+            parent=self,
+            alpha_0=15,
+            sigma_factor=sigma_factor,
+        )
+        self.final_ttl: NormalModel = NormalModel(
+            src,
+            dest,
+            parent=self,
+            alpha_0=10,
+            mu_0=0,
+            sigma_factor=sigma_factor,
+        )
+        self.ignore_zero_errors = ignore_zero_errors
 
         self.rtt_sum_errors = []
         self.ttl_sum_errors = []
 
         self.rtt_mean_errors = []
         self.ttl_mean_errors = []
+
+        self.ttl_errors = []
+        self.rtt_errors = []
 
     def _calculate_anomaly_weights(
         self, rtt_anomalies, ttl_anomalies
@@ -137,17 +164,21 @@ class TraceModel(BaseModel, Visual):
 
         rtt_pdf = []
         ttl_pdf = []
-        for hop, rtt, ttl in zip(hops, rtts, ttls):
+        ns = []
+        for i, (hop, rtt, ttl) in enumerate(zip(hops, rtts, ttls)):
             if hop not in self.rtt_models:
-                self.rtt_models[hop] = NormalModel(self.src, hop)
-                self.ttl_models[hop] = PoissonModel(self.src, hop)
+                self.rtt_models[hop] = ExponentialModel(
+                    self.src, hop, alpha_0=1, threshold=0.05, shift=0
+                )
+                self.ttl_models[hop] = PoissonModel(
+                    self.src, hop, threshold=0.05, gamma=0.5, shift=self.shift
+                )
 
             val = self.rtt_models[hop].log(ts, rtt)
-
             rtt_anomalies.append(val.is_anomaly)
             rtt_anomaly_total.append(val.n_anomalies)
             rtt_errors.append(val.error)
-            rtt_pdf.append(val.pdf)
+            rtt_pdf.append(val.sf)
 
             val = self.ttl_models[hop].log(ts, ttl)
 
@@ -155,12 +186,39 @@ class TraceModel(BaseModel, Visual):
             ttl_anomaly_total.append(val.n_anomalies)
             ttl_errors.append(val.error)
             ttl_pdf.append(val.pdf)
+            ns.append(self.ttl_models[hop].n)
+
+        # self.rtt_errors.append(rtt_errors)
+        # self.ttl_errors.append(ttl_errors)
 
         if self.mode == Mode.MEAN:
             return self._process(
                 ts,
-                float(np.mean(rtt_errors)),
-                float(np.mean(ttl_errors)),
+                float(
+                    np.mean(
+                        rtt_errors
+                        if not self.ignore_zero_errors
+                        else filter_zeros(rtt_errors)
+                    )
+                ),
+                float(
+                    np.mean(
+                        ttl_errors
+                        if not self.ignore_zero_errors
+                        else filter_zeros(ttl_errors)
+                    )
+                ),
+                # float(np.mean([x for x in (ttl_errors + [1]) if x])),
+                rtt_errors,
+                ttl_errors,
+                rtt_pdf,
+                ttl_pdf,
+            )
+        if self.mode == Mode.SUM:
+            return self._process(
+                ts,
+                float(np.sum(rtt_errors)),
+                float(np.sum(ttl_errors)),
                 rtt_errors,
                 ttl_errors,
                 rtt_pdf,
@@ -171,21 +229,23 @@ class TraceModel(BaseModel, Visual):
 
         rtt_anomaly_w = np.log1p(rtt_anomaly_total)
         rtt_anomaly_w /= rtt_anomaly_w.sum()  # type: ignore
+        # rtt_anomaly_w = 1 - np.array(rtt_anomaly_w)
 
         ttl_anomaly_w = np.log1p(ttl_anomaly_total)
         ttl_anomaly_w /= ttl_anomaly_w.sum()  # type: ignore
+        # ttl_anomaly_w = 1 - np.array(ttl_anomaly_w)
 
         rtt_seq_w, ttl_anom_seq_w = self._calculate_anomaly_weights(
             rtt_anomalies, ttl_anomalies
         )
 
         if self.mode == Mode.WEIGHTED_MEAN:
-            rtt_w = np.mean([uniform_w, rtt_anomaly_w, rtt_seq_w], axis=0).T
-            ttl_w = np.mean([uniform_w, ttl_anomaly_w, ttl_anom_seq_w], axis=0).T
+            rtt_w = np.mean([rtt_anomaly_w, rtt_seq_w], axis=0).T
+            ttl_w = np.mean([ttl_anomaly_w, ttl_anom_seq_w], axis=0).T
 
         else:
-            rtt_w = hmean([uniform_w, rtt_anomaly_w, rtt_seq_w]).T
-            ttl_w = hmean([uniform_w, ttl_anomaly_w, ttl_anom_seq_w]).T
+            rtt_w = hmean([rtt_anomaly_w, rtt_seq_w]).T
+            ttl_w = hmean([ttl_anomaly_w, ttl_anom_seq_w]).T
 
         return self._process(
             ts,
@@ -205,18 +265,28 @@ class TraceModel(BaseModel, Visual):
             "ttl_sum_errors": self.ttl_sum_errors,
             "rtt_mean_errors": self.rtt_mean_errors,
             "ttl_mean_errors": self.ttl_mean_errors,
+            # "ttl_errors": self.ttl_errors,
+            # "rtt_errors": self.rtt_errors,
         }
 
-    def plot(self, ax: Axes | None = None, **kwargs):
-        df = self.to_frame()
-        ax = ax or plt.gca()
+    def plot(self, fig: plt.Figure | None = None, **kwargs):
+        fig = fig or plt.figure()
 
-        anomaly_cnt = df["trace_ttl_anomalies"] + df["trace_rtt_anomalies"]
+        ax1, ax2 = fig.subplots(2, 1, sharex=True)
 
-        if "resample" in kwargs:
-            anomaly_cnt = anomaly_cnt.resample(kwargs["resample"]).sum()
+        self.final_rtt.plot(ax=ax1, **kwargs, kind="RTT")
+        ax1.legend(bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.0)
+        self.final_ttl.plot(ax=ax2, **kwargs, kind="TTL")
+        ax2.legend(bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.0)
 
-        plt.plot(kind="bar", label="Number of anomalies", ax=ax, **kwargs)
-        ax.set_title(
+        # ax = ax or plt.gca()
+
+        # anomaly_cnt = df["trace_ttl_anomalies"] + df["trace_rtt_anomalies"]
+
+        # if "resample" in kwargs:
+        #     anomaly_cnt = anomaly_cnt.resample(kwargs["resample"]).sum()
+
+        # plt.plot(kind="bar", label="Number of anomalies", ax=ax, **kwargs)
+        plt.suptitle(
             f"Number of anomalies on RTT and TTL for {self.src} -> {self.dest}"
         )

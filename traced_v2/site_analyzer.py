@@ -1,19 +1,17 @@
 import json
-from abc import abstractmethod
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Callable
 
 from matplotlib.axes import Axes
 from tqdm.auto import tqdm
-from traitlets import Callable
 
 from traced_v2.models.base_model import BaseModel, Visual
 from traced_v2.models.bernoulli import BernoulliModelOutput
+from traced_v2.models.normal import NormalModel
 from traced_v2.models.poisson import PoissonModel
-from traced_v2.trace_analyzer import (MultiTraceAnalyzer, TraceAnalyzer,
-                                      TraceAnalyzerOutput)
+from traced_v2.trace_analyzer import MultiTraceAnalyzer, TraceAnalyzerOutput
 
 
 class SiteAnalyzer(BaseModel, Visual):
@@ -21,6 +19,9 @@ class SiteAnalyzer(BaseModel, Visual):
         super().__init__(src, dest, *args, **kwargs)
         self.site_to_site: dict[str, dict[str, MultiTraceAnalyzer]] = {}
         self.n_anomalies: PoissonModel = PoissonModel(src, dest, parent=self)
+        self.anomalies: NormalModel = NormalModel(
+            src, dest, parent=self, sigma_factor=3, alpha_0=15, mu_0=0
+        )
 
     def log(self, data) -> tuple[None | TraceAnalyzerOutput, BernoulliModelOutput]:
         ts = data["timestamp"]
@@ -40,7 +41,9 @@ class SiteAnalyzer(BaseModel, Visual):
             else:
                 model = self.site_to_site[src_site][dest_site]
 
-        return model.log(data)  # type: ignore
+        out = model.log(data)  # type: ignore
+        self.anomalies.log(ts, model.n_anomalies.probs[-1])
+        return out
 
     def to_dict(self):
         return self.n_anomalies.to_dict()
@@ -77,7 +80,7 @@ class SiteAnalyzer(BaseModel, Visual):
             if filter is not None:
                 if not filter(data):  # type: ignore
                     continue
-            out = self.log(data)
+            self.log(data)
             # TODO: add result processing here
 
     def process_folder(
@@ -102,7 +105,7 @@ class SiteAnalyzer(BaseModel, Visual):
                         [show_progress] * len(subdirs),
                         [filter] * len(subdirs),
                     ),
-                    desc=f"Datasets processed",
+                    desc="Datasets processed",
                     unit="files",
                     total=len(subdirs),
                     position=0,

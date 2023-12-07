@@ -1,17 +1,26 @@
 from typing import Any
-import pandas as pd
 
+import numpy as np
+import pandas as pd
 import pydantic
 
 from traced_v2.models.base_model import BaseModel
 from traced_v2.models.bernoulli import BernoulliModel, BernoulliModelOutput
-from traced_v2.models.graph import Graph, GraphModel, GraphModelOutput
+from traced_v2.models.graph import GraphModel, GraphModelOutput
 from traced_v2.models.multinomial import (ForgettingMultinomialModel,
                                           MultinomialModelOutput)
 from traced_v2.models.poisson import PoissonModel, PoissonModelOutput
 from traced_v2.models.trace_model import Mode, TraceModel, TraceModelOutput
-from traced_v2.utils import add_prefix, create_hash, remove_duplicates
-from traced_v2.hierarchy import HashHierarchy
+from traced_v2.utils import add_prefix, create_hash
+
+
+def jaccaard_similarity(list1, list2):
+    s1 = set(list1)
+    s2 = set(list2)
+    if len(s2) == 0:
+        return 0
+    return len(s1.intersection(s2)) / len(s1.union(s2))
+
 
 class AnomalyReport(pydantic.BaseModel):
     ip_model_anomaly: bool
@@ -26,9 +35,9 @@ class AnomalyReport(pydantic.BaseModel):
     n_hops_model_anomaly: bool
 
     @property
-    def total(self)->int:
+    def total(self) -> int:
         return sum(self.dict().values())
-    
+
 
 class TraceAnalyzerOutput(pydantic.BaseModel):
     ip_model: GraphModelOutput
@@ -56,7 +65,7 @@ class TraceAnalyzer(BaseModel):
             as_model = kwargs.pop("as_model")
         else:
             as_model = GraphModel.get_or_create_subscription(
-                local=True, forgetting=True
+                local=False, forgetting=True
             )
         self.as_model_tag = as_model
 
@@ -65,7 +74,7 @@ class TraceAnalyzer(BaseModel):
         self.ip_model: GraphModel = GraphModel(
             src, dest, graph_subscription=ip_model, parent=self
         )
-        self.ip_hash_hierarchy: HashHierarchy = HashHierarchy()
+        # self.ip_hash_hierarchy: HashHierarchy = HashHierarchy()
 
         self.as_model: GraphModel = GraphModel(
             self.src,
@@ -73,13 +82,13 @@ class TraceAnalyzer(BaseModel):
             parent=self,
             graph_subscription=self.as_model_tag,
         )
-        self.as_hash_hierarchy: HashHierarchy = HashHierarchy()
+        # self.as_hash_hierarchy: HashHierarchy = HashHierarchy()
 
         self.path_complete: BernoulliModel = BernoulliModel(
             src,
             dest,
             parent=self,
-            scorer=lambda x, p: x if p <= 0.2 else not x if p >= 0.8 else False,
+            scorer=lambda x, p: x if p <= 0.1 else not x if p >= 0.9 else False,
         )
         self.destination_reached: BernoulliModel = BernoulliModel(
             src,
@@ -98,17 +107,22 @@ class TraceAnalyzer(BaseModel):
             src, dest, parent=self
         )
 
-        self.n_hops_model: PoissonModel = PoissonModel(src, dest, parent=self)
+        self.n_hops_model: PoissonModel = PoissonModel(
+            src, dest, parent=self, threshold=0.05
+        )
         self.trace_model: TraceModel = TraceModel(
             src,
             dest,
-            mode=Mode.WEIGHTED_HARMONIC_MEAN,  # parent=self,
+            mode=Mode.MEAN,
+            parent=self,
         )
         self.missing_data: BernoulliModel = BernoulliModel(
             src, dest, scorer=lambda x, _: x
         )
         self.n_anomalies: list[AnomalyReport] = []
         self.anomalies_model = PoissonModel(src, dest, parent=self, threshold=0.025)
+        self.ip_path_dict = {}
+        self.as_path_dict = {}
 
     def check_data_validity(self, data: dict[str, Any]) -> bool:
         """Checks that are needed data is present in the data object."""
@@ -128,6 +142,28 @@ class TraceAnalyzer(BaseModel):
             return False
 
         return True
+
+    def find_closest_as_path(
+        self,
+        hashed: str,
+        path: list[str | int],
+        path_complete: bool,
+        ip: bool = False,
+        threshold: float = 0.8,
+    ) -> str:
+        hashes = self.as_path_dict if not ip else self.ip_path_dict
+
+        if path_complete:
+            if hashed not in hashes:
+                hashes[hashed] = set(path)
+        else:
+            if hashes:
+                scores = [jaccaard_similarity(path, hashes[x]) for x in hashes]
+                max_idx = np.argmax(scores)
+                if scores[max_idx] > threshold:
+                    hashed = list(hashes.keys())[max_idx]
+
+        return hashed
 
     def log(self, data: dict[str, Any]) -> TraceAnalyzerOutput | AnomalyReport:
         ts = data["timestamp"]
@@ -150,8 +186,6 @@ class TraceAnalyzer(BaseModel):
             ttl - i for i, ttl in enumerate(data["ttls"])
         ]  # substract index from TTL
         trace_output = self.trace_model.log(ts, data["hops"], data["rtts"], delta_ttls)
-     
-     
 
         path_complete_output = self.path_complete.log(ts, data["path_complete"])
 
@@ -159,15 +193,27 @@ class TraceAnalyzer(BaseModel):
 
         looping = self.looping.log(ts, data["looping"])
 
-        as_path_hash = self.as_hash_hierarchy.hash(data["asns"])
+        path = set(map(str, [data["src"]] + data["asns"]))
+        as_path_hash = create_hash("".join(path))
+        final_as_hash = self.find_closest_as_path(
+            as_path_hash, path, data["path_complete"], ip=False
+        )
+
         path_probs = self.path_probs.log(
             # ts, create_hash("".join(map(str, set(data["asns"]))))
-            ts, as_path_hash
+            ts,
+            final_as_hash,
         )
-        ip_path_hash = self.ip_hash_hierarchy.hash(data["hops"])
+        path = set([data["src"]] + data["hops"])
+        ip_path_hash = create_hash("".join(path))
+        final_ip_hash = self.find_closest_as_path(
+            ip_path_hash, path, data["path_complete"], ip=True
+        )
+
         ip_path_probs = self.ip_path_probs.log(
             # ts, create_hash("".join(map(str, set(data["hops"]))))
-        ts, ip_path_hash
+            ts,
+            final_ip_hash,
         )
         n_hops = self.n_hops_model.log(ts, len(data["hops"]))
 
@@ -183,7 +229,6 @@ class TraceAnalyzer(BaseModel):
             ip_path_probs_anomaly=ip_path_probs.anomaly,
             n_hops_model_anomaly=n_hops.is_anomaly,
         )
-        self.n_anomalies.append(anomalies)
         self.anomalies_model.log(ts, anomalies.total)
 
         return TraceAnalyzerOutput(
@@ -217,9 +262,10 @@ class MultiTraceAnalyzer(BaseModel):
     def __init__(self, src: str, dest: str, *args, **kwargs) -> None:
         super().__init__(src, dest, *args, **kwargs)
         self.trace_analyzer: dict[str, TraceAnalyzer] = {}
-        self.n_anomalies: PoissonModel = PoissonModel(src, dest, parent=self, threshold=0.025)
-        self.trace_models: dict[str, dict[str, TraceAnalyzer]] = {} # TODO remove
-        self.anomaly_reports: pd.DataFrame = pd.DataFrame(columns=list(AnomalyReport.__fields__.keys()))
+        self.n_anomalies: PoissonModel = PoissonModel(
+            src, dest, parent=self, threshold=0.025
+        )
+        self._anomaly_reports: list[Any] = []
 
     def log(self, data: dict[str, Any]) -> TraceAnalyzerOutput | AnomalyReport:
         ts = data["timestamp"]
@@ -238,18 +284,49 @@ class MultiTraceAnalyzer(BaseModel):
                 src_site, dest_site, ip_model=subscription, as_model=subscription_as
             )
         out = self.trace_analyzer[key].log(data)
-        
+
         tmp = out.anomalies if isinstance(out, TraceAnalyzerOutput) else out
         self.n_anomalies.log(ts, tmp.total)
-        
-        payload = {**tmp.dict(), "src": src_site, "dest": dest_site, "timestamp": ts}
 
-        anomalies = pd.DataFrame([payload])
-        self.anomaly_reports: pd.DataFrame = pd.concat([self.anomaly_reports, anomalies], ignore_index=True)
+        payload = {
+            **tmp.dict(),
+            "src": src_site,
+            "dest": dest_site,
+            "src_ip": data.get("src"),
+            "dest_ip": data.get("dest"),
+            "timestamp": ts,
+        }
+
+        anomalies = payload
+        self._anomaly_reports.append(anomalies)
         return out
+
+    @property
+    def anomaly_reports(self):
+        tmp = pd.DataFrame(columns=list(AnomalyReport.__fields__.keys()))
+        tmp = pd.concat([tmp, pd.DataFrame(self._anomaly_reports)], ignore_index=True)
+        # tmp.set_index("timestamp", inplace=True)
+        # tmp.sort_index(inplace=True)
+        # tmp['timestamp'] = pd.to_datetime(tmp['timestamp'], unit='ms')
+        tmp.rename(
+            columns={
+                "as_path_probs_anomaly": "AS Path Anomaly",
+                "as_model_anomaly": "AS Transition Anomaly",
+                "ip_path_probs_anomaly": "IP Path Anomaly",
+                "ip_model_anomaly": "IP Transition Anomaly",
+                "destination_reached_anomaly": "Destination Reached Anomaly",
+                "path_complete_anomaly": "Path Complete Anomaly",
+                "looping_anomaly": "Looping Anomaly",
+                "trace_rtt_anomaly": "RTT delay Anomaly",
+                "trace_ttl_anomaly": "TTL delay Anomaly",
+                "n_hops_model_anomaly": "Number of hops Anomaly",
+            },
+            inplace=True,
+        )
+        return tmp
 
     def to_dict(self) -> dict[str, list[Any]]:
         return {
             **add_prefix("n_anomalies", self.n_anomalies.to_dict()),
-            **add_prefix("anomaly_reports", self.anomaly_reports.to_dict()), # type: ignore
+            **add_prefix("anomaly_reports", self.anomaly_reports.to_dict()),  # type: ignore
         }
