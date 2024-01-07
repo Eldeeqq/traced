@@ -97,8 +97,8 @@ class NormalModel(BaseModel):
         df["upper_bound"].plot(
             ax=axes, color="tab:purple", alpha=0.5, label="_nolegend_"
         )
-        df["observed"].plot(axes=axes, label="X", color="tab:orange", alpha=0.8)
-        df["mu"].plot(axes=axes, label="$\\mathbb{E}(X)$", color="tab:blue")
+        df["observed"].plot(ax=axes, label="X", color="tab:orange", alpha=0.8)
+        df["mu"].plot(ax=axes, label="$\\mathbb{E}(X)$", color="tab:blue")
 
         anomalies = df[df["anomalies"]]
 
