@@ -274,10 +274,10 @@ class MultiTraceAnalyzer(BaseModel):
         dest_site = data["dest"]
         key = f"{src_site}-{dest_site}"
         subscription = GraphModel.get_or_create_subscription(
-            local=True, forgetting=True, key=key
+            local=False, forgetting=True, key=key
         )
         subscription_as = GraphModel.get_or_create_subscription(
-            local=True, forgetting=True, key=f"{key}_as"
+            local=False, forgetting=True, key=f"{key}_as"
         )
         if key not in self.trace_analyzer:
             self.trace_analyzer[key] = TraceAnalyzer(

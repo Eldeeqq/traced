@@ -2,6 +2,9 @@ import glob
 import random
 import sys
 
+sys.path.insert(0, "..")
+
+
 import streamlit as st
 from streamlit_folium import st_folium
 from utils import (get_site_to_site, plot_all_anomalies, plot_asn_section,
@@ -9,11 +12,12 @@ from utils import (get_site_to_site, plot_all_anomalies, plot_asn_section,
                    plot_n_anomalies, plot_n_hops_section,
                    plot_path_complete_section, plot_path_looping_section,
                    plot_paths_folium, plot_rtt_section,
-                   plot_site_to_site_anomalies, plot_ttl_section)
+                   plot_site_to_site_anomalies, plot_ttl_section,
+                   plot_global_paths,
+                   plot_site_paths)
 
 from traced_v2.site_analyzer import SiteAnalyzer
 
-sys.path.insert(0, "..")
 
 
 st.set_page_config(
@@ -34,7 +38,7 @@ sample = random.choice(files)
 
 analyzer: SiteAnalyzer = get_site_to_site()
 sources = list(analyzer.site_to_site.keys())
-
+st.sidebar.title("Select site pair")
 source = st.sidebar.selectbox("Source", sources, help="Select source site")
 
 if not sources or source not in analyzer.site_to_site:
@@ -50,8 +54,19 @@ if not destinations or dest not in analyzer.site_to_site[source]:
     st.stop()
 
 st.sidebar.toggle(
-    "Show help", False, key="help", help="Shows help across the dashboard"
+    "Show help", True, key="help", help="Shows help across the dashboard"
 )
+st.sidebar.success(
+    """How to use the dashboard:
+
+- You can chage the source and destination site using the selectboxes on the left.
+- Note that whenever anything changes, the dashboard will re-do the plots and it might take a while. This is indicated by the loading icon in the right corner of the page.
+If this icon is active, please wait until the dashboard is updated.
+- There are help sections explaining the plots. You can show/hide them using the toggle on the left.
+- There is a known bug with the map visualisation, which sometimes does not work. If this happens, please refresh the page, or restart the app.
+    """
+)
+
 
 st.header("Traced Dashboard")
 
@@ -79,6 +94,9 @@ with st.expander("Info", st.session_state["help"]):
     """
     )
 plot_all_anomalies()
+with st.expander("Global map visualisation"):
+    st_folium(plot_global_paths(), use_container_width=True, returned_objects=[])
+
 st.divider()
 
 st.subheader(f"Site to site results: {source} -> {dest}")
@@ -108,7 +126,8 @@ with st.expander("Info", st.session_state["help"]):
     """
     )
 plot_site_to_site_anomalies(source, dest)
-
+with st.expander("Site level map visualisation"):
+    st_folium(plot_site_paths(source, dest), use_container_width=True, returned_objects=[])
 st.divider()
 st.subheader("Device to device results")
 
@@ -136,15 +155,6 @@ if not trace and trace not in analyzer.site_to_site[source][dest].trace_analyzer
     st.warning("There has been an issue. Try different route.")
     st.stop()
 
-try:
-    geo_plot = plot_paths_folium(source, dest, trace)
-    st_folium(geo_plot, use_container_width=True, returned_objects=[])
-except AttributeError:
-    st.toast("Unable to plot geo map")
-    pass
-
-trace_model = analyzer.site_to_site[source][dest].trace_analyzer[trace]
-
 with st.expander("Info", st.session_state["help"]):
     st.markdown(
         """
@@ -167,6 +177,17 @@ with st.expander("Info", st.session_state["help"]):
     """
     )
 plot_n_anomalies(source, dest, trace)
+
+try:
+    with st.expander("Device level map visualisation"):
+
+        geo_plot = plot_paths_folium(source, dest, trace)
+        st_folium(geo_plot, use_container_width=True, returned_objects=[])
+except AttributeError:
+    st.toast("Unable to plot geo map")
+    pass
+
+trace_model = analyzer.site_to_site[source][dest].trace_analyzer[trace]
 
 tabs = st.tabs(
     [

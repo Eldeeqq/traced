@@ -10,6 +10,7 @@ import streamlit as st
 from folium import plugins
 from matplotlib import pyplot as plt
 from templates import POPUP_TEMPLATE
+from itertools import cycle
 
 from traced_v2.ip import IP2Geo
 from traced_v2.site_analyzer import SiteAnalyzer
@@ -53,13 +54,13 @@ def get_site_to_site() -> SiteAnalyzer:
     return site_to_site
 
 
-@st.cache_resource(max_entries=3)
+
 def get_trace_model(src_site, dest_site, route) -> TraceAnalyzer:
     site_to_site = get_site_to_site()
     return site_to_site.site_to_site[src_site][dest_site].trace_analyzer[route]
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_paths_folium(src_site, dest_site, route):
     analyzer = get_site_to_site()
     site_to_site = analyzer.site_to_site[src_site][dest_site]
@@ -75,17 +76,22 @@ def plot_paths_folium(src_site, dest_site, route):
 
     df = ip2geo.df
 
-    curr_df = df[df["ip"].isin(graph.nodes)]  # .dropna()
-    center_lon = curr_df["longitude"].dropna().mean()
-    center_lat = curr_df["latitude"].dropna().mean()
+    curr_df = df[df["ip"].isin(graph.nodes)] #.dropna()
+    center_lon = curr_df["longitude"].dropna().mean() or 46.2330
+    center_lat = curr_df["latitude"].dropna().mean() or 6.0557
     if np.isnan(center_lat) or np.isnan(center_lon):
         return
-    f = folium.Figure(height=700)
+    f = folium.Figure(height=500)
 
     m = folium.Map(
         location=[center_lat, center_lon], zoom_start=3, tiles="OpenStreetMap"
     )
-    layer = folium.FeatureGroup(name="Nodes")
+    internet_l = folium.FeatureGroup(name="Internet routers")
+    source_l = folium.FeatureGroup(name="Source routers")
+    destination_l = folium.FeatureGroup(name="Destination routers")
+    m.add_child(internet_l)
+    m.add_child(source_l)
+    m.add_child(destination_l)
     if curr_df.shape[0] == 0:
         return m
     bearings = [0, 45, 90, 135, 180, 225, 270, 315]
@@ -119,21 +125,35 @@ def plot_paths_folium(src_site, dest_site, route):
             if node == source:
                 color = "green"
                 icon = "play"
+                folium.Marker(
+                    [data["latitude"], data["longitude"]],
+                    popup=popup,
+                    tooltip=node,
+                    icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                    # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                ).add_to(source_l)
             elif node == dest:
                 color = "red"
                 icon = "stop"
+                folium.Marker(
+                    [data["latitude"], data["longitude"]],
+                    popup=popup,
+                    tooltip=node,
+                    icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                    # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                ).add_to(destination_l)
             else:
                 color = "darkblue" if not is_bogon else "orange"
                 icon = "server" if not is_bogon else "question"
-            folium.Marker(
-                [data["latitude"], data["longitude"]],
-                popup=popup,
-                tooltip=node,
-                icon=folium.Icon(color=color, icon=icon, prefix="fa"),
-            ).add_to(layer)
+                folium.Marker(
+                    [data["latitude"], data["longitude"]],
+                    popup=popup,
+                    tooltip=node,
+                    icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                    # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                ).add_to(internet_l)
         else:
             st.toast(f"`{node}` is missing.")
-    m.add_child(layer)
     m.add_child(plugins.MiniMap())
     m.add_child(plugins.Draw())
     m.add_child(folium.LayerControl())
@@ -142,7 +162,219 @@ def plot_paths_folium(src_site, dest_site, route):
     return f
 
 
-@st.cache_resource(max_entries=3)
+# @st.cache_resource(max_entries=1)
+def plot_global_paths():
+    analyzer = get_site_to_site()
+    f = folium.Figure(height=600)
+    m = folium.Map(
+        location=[46.2330, 6.0557], zoom_start=3, tiles="OpenStreetMap"
+    )
+    internet =  folium.FeatureGroup(name="Internet routers")
+    sources =  folium.FeatureGroup(name="Source routers")
+    destinations =  folium.FeatureGroup(name="Destination routers")
+    m.add_child(internet)
+    m.add_child(sources)
+    m.add_child(destinations)
+    f.add_child(m)
+ 
+    colors = cycle(["red", "blue", "green", "purple", "orange", "darkred", "darkblue", "darkgreen", "cadetblue", "darkpurple", "white", "pink", "lightblue", "lightgreen", "gray", "black", "lightgray"])
+    for src_dite in analyzer.site_to_site:
+        for dest_site in analyzer.site_to_site[src_dite]:
+            edges = folium.FeatureGroup(name=f"{src_dite} -> {dest_site}")
+            m.add_child(edges)
+            edge_color = next(colors)
+
+            for route in analyzer.site_to_site[src_dite][dest_site].trace_analyzer:
+                trace_analyzer = analyzer.site_to_site[src_dite][dest_site].trace_analyzer[route]
+                graph = trace_analyzer.ip_model.graph.to_graph()
+
+                source = trace_analyzer.src
+                dest = trace_analyzer.dest
+
+                ip2geo = get_ip2geo()
+                ip2geo.get_missing_node_metadata(graph)
+
+                df = ip2geo.df
+
+                curr_df = df[df["ip"].isin(graph.nodes)]  # .dropna()
+
+    
+                if curr_df.shape[0] == 0:
+                    continue
+                bearings = [0, 45, 90, 135, 180, 225, 270, 315]
+
+                for u, v, data in graph.edges(data=True):
+                    u_data = ip2geo.get_ip_geo(u)
+                    v_data = ip2geo.get_ip_geo(v)
+                    color = "#3632a8"
+
+                    folium.PolyLine(
+                        [
+                            [u_data["latitude"], u_data["longitude"]],
+                            [v_data["latitude"], v_data["longitude"]],
+                        ],
+                        color=edge_color,
+                        weight=10* data["weight"],
+                        tooltip=data["weight"],
+                        opacity=0.1,
+                        bearings=bearings,
+                    ).add_to(edges)
+
+                for node in [x for x in graph.nodes if x not in [source, dest]] + [source, dest]:
+                    data = ip2geo.get_ip_geo(node)
+                    if not np.isnan(data["latitude"]) and not np.isnan(data["longitude"]):
+                        is_bogon = np.isclose(data["latitude"], 0, atol=1e-3) and np.isclose(
+                            data["longitude"], 0, atol=1e-3
+                        )
+                        popup = POPUP_TEMPLATE.render(data=data) if not is_bogon else ""
+                        if node == source:
+                            color = "green"
+                            icon = "play"
+                            folium.Marker(
+                                [data["latitude"], data["longitude"]],
+                                popup=popup,
+                                tooltip=node,
+                                icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                                # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                            ).add_to(sources)
+                        elif node == dest:
+                            color = "red"
+                            icon = "stop"
+                            folium.Marker(
+                                [data["latitude"], data["longitude"]],
+                                popup=popup,
+                                tooltip=node,
+                                icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                                # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                            ).add_to(destinations)
+                        else:
+                            color = "darkblue" if not is_bogon else "orange"
+                            icon = "server" if not is_bogon else "question"
+                            folium.Marker(
+                                [data["latitude"], data["longitude"]],
+                                popup=popup,
+                                tooltip=node,
+                                icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                                # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                            ).add_to(internet)
+                    else:
+                       continue
+            # m.add_child(edges)
+    f.add_child(m)
+
+    m.add_child(plugins.MiniMap())
+    m.add_child(plugins.Draw())
+    m.add_child(folium.LayerControl())
+    m.add_child(plugins.Fullscreen())
+    return f
+
+
+# @st.cache_resource(max_entries=1)
+def plot_site_paths(src_dite, dest_site):
+    analyzer = get_site_to_site()
+    f = folium.Figure(height=500)
+    m = folium.Map(
+        location=[46.2330, 6.0557], zoom_start=3, tiles="OpenStreetMap"
+    )
+    internet =  folium.FeatureGroup(name="Internet routers")
+    sources =  folium.FeatureGroup(name="Source routers")
+    destinations =  folium.FeatureGroup(name="Destination routers")
+    m.add_child(internet)
+    m.add_child(sources)
+    m.add_child(destinations)
+    f.add_child(m)
+ 
+    colors = cycle(["red", "blue", "green", "purple", "orange", "darkred", "darkblue", "darkgreen", "cadetblue", "darkpurple", "white", "pink", "lightblue", "lightgreen", "gray", "black", "lightgray"])
+
+   
+    edge_color = next(colors)
+
+    for route in analyzer.site_to_site[src_dite][dest_site].trace_analyzer:
+        trace_analyzer = analyzer.site_to_site[src_dite][dest_site].trace_analyzer[route]
+        graph = trace_analyzer.ip_model.graph.to_graph()
+        edges = folium.FeatureGroup(name=f"{route}")
+        m.add_child(edges)
+        source = trace_analyzer.src
+        dest = trace_analyzer.dest
+
+        ip2geo = get_ip2geo()
+        ip2geo.get_missing_node_metadata(graph)
+
+        df = ip2geo.df
+
+        curr_df = df[df["ip"].isin(graph.nodes)]  # .dropna()
+
+
+        if curr_df.shape[0] == 0:
+            continue
+        bearings = [0, 45, 90, 135, 180, 225, 270, 315]
+
+        for u, v, data in graph.edges(data=True):
+            u_data = ip2geo.get_ip_geo(u)
+            v_data = ip2geo.get_ip_geo(v)
+            color = "#3632a8"
+
+            folium.PolyLine(
+                [
+                    [u_data["latitude"], u_data["longitude"]],
+                    [v_data["latitude"], v_data["longitude"]],
+                ],
+                color=edge_color,
+                weight=10* data["weight"],
+                tooltip=data["weight"],
+                opacity=0.1,
+                bearings=bearings,
+            ).add_to(edges)
+
+        for node in [x for x in graph.nodes if x not in [source, dest]] + [source, dest]:
+            data = ip2geo.get_ip_geo(node)
+            if not np.isnan(data["latitude"]) and not np.isnan(data["longitude"]):
+                is_bogon = np.isclose(data["latitude"], 0, atol=1e-3) and np.isclose(
+                    data["longitude"], 0, atol=1e-3
+                )
+                popup = POPUP_TEMPLATE.render(data=data) if not is_bogon else ""
+                if node == source:
+                            color = "green"
+                            icon = "play"
+                            folium.Marker(
+                                [data["latitude"], data["longitude"]],
+                                popup=popup,
+                                tooltip=node,
+                                icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                                # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                            ).add_to(sources)
+                elif node == dest:
+                    color = "red"
+                    icon = "stop"
+                    folium.Marker(
+                        [data["latitude"], data["longitude"]],
+                        popup=popup,
+                        tooltip=node,
+                        icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                        # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                    ).add_to(destinations)
+                else:
+                    color = "darkblue" if not is_bogon else "orange"
+                    icon = "server" if not is_bogon else "question"
+                    folium.Marker(
+                        [data["latitude"], data["longitude"]],
+                        popup=popup,
+                        tooltip=node,
+                        icon=folium.Icon(color=color, icon="glyphicon glyphicon-tasks", ),
+                        # icon=folium.Icon(color=color, icon=icon, prefix="fa"),
+                    ).add_to(internet)
+            else:
+                continue
+    f.add_child(m)
+
+    m.add_child(plugins.MiniMap())
+    m.add_child(plugins.Draw())
+    m.add_child(folium.LayerControl())
+    m.add_child(plugins.Fullscreen())
+    return f
+
+
+
 def plot_asn_path(src_site, dest_site, route):
     trace_model = get_trace_model(src_site, dest_site, route)
 
@@ -151,10 +383,11 @@ def plot_asn_path(src_site, dest_site, route):
     if len(trace_model.path_probs.category_counts) < 10:
         plt.legend()
     plt.ylabel("Probability")
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_ip_path(src_site, dest_site, route):
     trace_model = get_trace_model(src_site, dest_site, route)
 
@@ -162,10 +395,11 @@ def plot_ip_path(src_site, dest_site, route):
     trace_model.ip_path_probs.plot(
         ax=fig.gca(), kind="AS Number sequence probabilities"
     )
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_as_path_probs(src_site, dest_site, route):
     trace_model = get_trace_model(src_site, dest_site, route)
 
@@ -173,10 +407,11 @@ def plot_as_path_probs(src_site, dest_site, route):
     trace_model.as_model.prob_model.plot(
         ax=fig.gca(), kind="AS Number sequence transition log-probabilities"
     )
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_ip_path_probs(src_site, dest_site, route):
     trace_model = get_trace_model(src_site, dest_site, route)
 
@@ -184,10 +419,11 @@ def plot_ip_path_probs(src_site, dest_site, route):
     trace_model.ip_model.prob_model.plot(
         ax=fig.gca(), kind="IP sequence transition log-probabilities"
     )
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_rtt(src_site, dest_site, route):
     trace_model = get_trace_model(src_site, dest_site, route)
 
@@ -196,10 +432,11 @@ def plot_rtt(src_site, dest_site, route):
         ax=fig.gca(), kind="Aggregated RTT errors (ms)"
     )
     plt.ylabel("RTT error (ms)")
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_ttl(src_site, dest_site, route):
     trace_model = get_trace_model(src_site, dest_site, route)
 
@@ -208,41 +445,45 @@ def plot_ttl(src_site, dest_site, route):
         ax=fig.gca(), kind="Aggregated TTL error (hops)"
     )
     plt.ylabel("TTL error (hops)")
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def get_trace_model_df(src_site, dest_site, route):
     return get_trace_model(src_site, dest_site, route).to_frame()
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_destination_reached(src_site, dest_site, route):
     model = get_trace_model(src_site, dest_site, route)
     fig = plt.figure(figsize=(16, 4))
     model.destination_reached.plot(ax=fig.gca())
     plt.title("Destination Reached")
     plt.ylabel("Probability")
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_path_complete(src_site, dest_site, route):
     model = get_trace_model(src_site, dest_site, route)
     fig = plt.figure(figsize=(16, 4))
     model.path_complete.plot(ax=fig.gca())
     plt.ylabel("Probability")
     plt.title("Path Complete")
+    plt.close(fig)
     return fig
 
 
-@st.cache_resource(max_entries=3)
+
 def plot_looping(src_site, dest_site, route):
     model = get_trace_model(src_site, dest_site, route)
     fig = plt.figure(figsize=(16, 4))
     model.looping.plot(ax=fig.gca())
     plt.ylabel("Probability")
     plt.title("Looping")
+    plt.close(fig)
     return fig
 
 
@@ -330,9 +571,9 @@ def plot_asn_section(src_site, dest_site, route):
     # plot_as_hierarchy(src_site, dest_site, route, as_hier)
 
 
-@st.cache_resource(max_entries=1)
-def _plot_as_hierarchy(src_site, dest_site, route):
-    pass
+# @st.cache_resource(max_entries=1)
+# def _plot_as_hierarchy(src_site, dest_site, route):
+#     pass
     # model = get_trace_model(src_site, dest_site, route)
     # G = model.as_hash_hierarchy.hash_graph
     # G = prune_graph(G)
@@ -461,9 +702,9 @@ def plot_ip_section(src_site, dest_site, route):
     # plot_ip_hirarchy(src_site, dest_site, route, ip_hierarchy)
 
 
-@st.cache_resource(max_entries=1)
-def _plot_ip_hierarchy(src_site, dest_site, route):
-    pass
+# @st.cache_resource(max_entries=1)
+# def _plot_ip_hierarchy(src_site, dest_site, route):
+#     pass
     # model = get_trace_model(src_site, dest_site, route)
     # G = model.ip_hash_hierarchy.hash_graph
     # G = prune_graph(G)
@@ -518,12 +759,14 @@ def plot_n_hops_section(src_site, dest_site, route):
     trace_model = get_trace_model(src_site, dest_site, route)
     trace_model.n_hops_model.plot(ax=fig.gca())
     plt.title("Number of hops")
+    plt.close(fig)
     st.write(fig)
 
     fig = plt.figure(figsize=(16, 5))
     trace_model = get_trace_model(src_site, dest_site, route)
     trace_model.n_hops_model.plot_sf_anoms(ax=fig.gca())
     plt.title("Probability of number of hops")
+    plt.close(fig)
     st.write(fig)
 
     primary, per_as, per_ip = st.tabs(["Observed", "Per AS", "Per IP"])
@@ -1059,7 +1302,7 @@ def plot_n_anomalies(src_site, dest_site, route):
     if X.empty:
         return
     period = st.selectbox(
-        "Aggregation period", ["1H", "30min", "12H", "1D", "1W", "2W", "1M"]
+        "Aggregation period", ["8H", "1H", "30min", "12H", "1D", "1W", "2W", "1M"]
     )
 
     first, second = st.tabs(["Observed", "Model"])
@@ -1087,6 +1330,7 @@ def plot_n_anomalies(src_site, dest_site, route):
         ax=fig.gca()
     )
     plt.title("Probabilities of number of anomalies")
+    plt.close(fig)
     second.pyplot(fig, use_container_width=True)
 
 
@@ -1103,7 +1347,7 @@ def collect_df(src, dest, route):
     if X.empty:
         return X
 
-    X = X[X[0]]
+    X = X[X[0]==True]
     X.columns = ["timestamp", "anomaly", "value"]
     X["value"] = X["value"].astype(int)
     X["route"] = route
@@ -1136,7 +1380,7 @@ def process(df):
     )
 
     X = df.set_index(["timestamp", "src", "dest"]).stack().reset_index()
-    X = X[X[0]]
+    X = X[X[0]==True]
     X.columns = ["timestamp", "source", "destination", "anomaly", "value"]
     X["value"] = X["value"].astype(int)
     try:
@@ -1159,7 +1403,7 @@ def plot_site_to_site_anomalies(src_site, dest_site):
 
     period = st.selectbox(
         "Aggregation period",
-        ["1H", "30min", "3H", "8H", "12H", "1D", "1W", "2W", "1M"],
+        ["8H", "30min", "3H", "1H", "12H", "1D", "1W", "2W", "1M"],
         key="period_1",
     )
     stacked = True
@@ -1197,7 +1441,7 @@ def plot_all_anomalies():
     df = process(df)
     period = st.selectbox(
         "Aggregation period",
-        ["1H", "30min", "3H", "8H", "12H", "1D", "1W", "2W", "1M"],
+        ["8H", "1H", "30min", "3H",  "12H", "1D", "1W", "2W", "1M"],
         key="period_0",
     )
     stacked = True
@@ -1217,4 +1461,14 @@ def plot_all_anomalies():
         color="anomaly",
         backend="plotly",
     )
-    st.plotly_chart(fig, use_container_width=True)
+   
+    config = {
+            'toImageButtonOptions': {
+                'format': 'png', # one of png, svg, jpeg, webp
+                'filename': 'global_anomalies',
+                'height': 800,
+                'width': 2400,
+                'scale':4# Multiply title/legend/axis/canvas sizes by this factor
+            }
+    }
+    st.plotly_chart(fig, use_container_width=True, config=config)
