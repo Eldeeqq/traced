@@ -10,5 +10,32 @@ Czech Technical University In Prague, in cooperation with CERN and University of
 
 # Usage
 
-This project uses [conda](https://anaconda.org/) as a package manager. Conda environment file is present here [environment.yml](./environment.yaml)
-This project currently does not 
+This project uses [conda](https://anaconda.org/) as a package manager. Conda environment file is present here [environment.yaml](./environment.yaml)
+
+To install it, run:
+```bash
+conda env create --name traced --file=environment.yaml 
+```
+
+# Notebooks 
+The notebooks are currently in read-only mode, due the re-implementation of the traced module. The notebooks have to undergo a migration to new version of the module (and also some cleaning).
+
+
+# Demo Dashboard app
+
+The demo dashboard uses serialised models to avoid
+sharing and processing the data.
+
+Unzip the data archive into app folder, the final structure should look like: `app/data/*.dill`.
+Then run the following commands.
+
+```bash
+conda env create --name traced --file=environment.yaml 
+cd app
+streamlit run app.py
+```
+
+After that, web browser should open with a tab containing the demo dashboard app. After each reload, please wait for the app to finish loading (animation in right top corner).
+
+# Remarks
+The module, notebooks, and dashboard app was tested on Mac OS with M1 chip and on Ubuntu 18 LTS.  If you encounter any problems, create issue, or contact me at `perinja2@gmail.com`.
