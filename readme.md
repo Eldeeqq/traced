@@ -8,6 +8,8 @@ detection using Bayesian inference with code name `traced`. This project was don
 Faculty of Information Technology, Czech Technical University In Prague, in cooperation with CERN and University of
  Michigan.
 
+The current version is in module `traced_v2`, `traced` module was kept for backward compatibility of notebooks, but will be removed in future.
+
 # Usage
 
 This project uses [conda](https://anaconda.org/) as a package manager. Conda environment file is present here [environment.yaml](./environment.yaml)
