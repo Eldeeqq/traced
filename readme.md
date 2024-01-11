@@ -10,6 +10,8 @@ Faculty of Information Technology, Czech Technical University In Prague, in coop
 
 The current version is in module `traced_v2`, `traced` module was kept for backward compatibility of notebooks, but will be removed in future.
 
+For minimal demo, see [this notebook](./notebooks/showcase.ipynb).
+
 # Usage
 
 This project uses [conda](https://anaconda.org/) as a package manager. Conda environment file is present here [environment.yaml](./environment.yaml)
