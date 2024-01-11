@@ -5,7 +5,7 @@
 
 This project contains experiment notebooks and source code for traceroute anomaly
 detection using Bayesian inference with code name `traced`. This project was done as Masters Thesis at 
-Czech Technical University In Prague, in cooperation with CERN and University of
+Faculty of Information Technology, Czech Technical University In Prague, in cooperation with CERN and University of
  Michigan.
 
 # Usage
