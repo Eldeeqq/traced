@@ -53,7 +53,7 @@ class BernoulliModel(BaseModel, Visual):
             "anomalies": self.anomalies,
         }
 
-    def plot(self, ax: Axes | None = None):
+    def plot(self, ax: Axes | None = None, show_data: bool = True):
         df = self.to_frame()
 
         ax = ax or plt.gca()
@@ -73,19 +73,20 @@ class BernoulliModel(BaseModel, Visual):
         )
         positive = df[df["observed_variables"]]
         if positive.shape[0] > 1:
-            positive.astype(int).plot(
-                ax=ax,
-                y="observed_variables",
-                label="success",
-                color="green",
-                marker="o",
-                linestyle="None",
-                alpha=0.1,
-            )
-            if any(self.anomalies):
-                positive[positive["anomalies"]].astype(int).plot(
+            if show_data:
+                positive.astype(int).plot(
                     ax=ax,
                     y="observed_variables",
+                    label="success",
+                    color="green",
+                    marker="o",
+                    linestyle="None",
+                    alpha=0.1,
+                )
+            if any(self.anomalies):
+                positive[positive["anomalies"]].plot(
+                    ax=ax,
+                    y="success_probs",
                     label="anomaly",
                     color="black",
                     marker="x",
@@ -94,19 +95,20 @@ class BernoulliModel(BaseModel, Visual):
                 )
         negative = df[~df["observed_variables"]]
         if negative.shape[0] > 1:
-            negative.astype(int).plot(
-                ax=ax,
-                y="observed_variables",
-                label="failure",
-                color="red",
-                marker="o",
-                linestyle="None",
-                alpha=0.1,
-            )
-            if any(self.anomalies):
-                negative[negative["anomalies"]].astype(int).plot(
+            if show_data:
+                negative.astype(int).plot(
                     ax=ax,
                     y="observed_variables",
+                    label="failure",
+                    color="red",
+                    marker="o",
+                    linestyle="None",
+                    alpha=0.1,
+                )
+            if any(self.anomalies):
+                negative[negative["anomalies"]].plot(
+                    ax=ax,
+                    y="success_probs",
                     label="",
                     color="black",
                     marker="x",

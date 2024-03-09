@@ -124,6 +124,9 @@ class NormalModel(BaseModel, Visual):
 
         ax = ax or plt.gca()
 
+        if "skip_first" in kwargs:
+            df = df.iloc[kwargs["skip_first"] :]
+
         if "resample" in kwargs:
             df = (
                 df.select_dtypes(exclude=["object"]).resample(kwargs["resample"]).mean()

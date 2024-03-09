@@ -7,18 +7,27 @@ import pydantic
 from traced_v2.models.base_model import BaseModel
 from traced_v2.models.bernoulli import BernoulliModel, BernoulliModelOutput
 from traced_v2.models.graph import GraphModel, GraphModelOutput
+from traced_v2.models.normal import NormalModel
 from traced_v2.models.multinomial import (ForgettingMultinomialModel,
                                           MultinomialModelOutput)
 from traced_v2.models.poisson import PoissonModel, PoissonModelOutput
 from traced_v2.models.trace_model import Mode, TraceModel, TraceModelOutput
 from traced_v2.utils import add_prefix, create_hash
 
+from collections import Counter
 
 def jaccaard_similarity(list1, list2):
+
+    cnts_1 = Counter(list1)
+    cnts_2 = Counter(list2)
+    list1 = [f"{x}{i}" for x in list1 for i in range(cnts_1[x])]
+    list2 = [f"{x}{i}" for x in list1 for i in range(cnts_2[x])]
+
     s1 = set(list1)
     s2 = set(list2)
     if len(s2) == 0:
         return 0
+    
     return len(s1.intersection(s2)) / len(s1.union(s2))
 
 
@@ -88,13 +97,13 @@ class TraceAnalyzer(BaseModel):
             src,
             dest,
             parent=self,
-            scorer=lambda x, p: x if p <= 0.1 else not x if p >= 0.9 else False,
+            scorer=lambda x, p: x if p <= 0.05 else not x if p >= 0.95 else False,
         )
         self.destination_reached: BernoulliModel = BernoulliModel(
             src,
             dest,
             parent=self,
-            scorer=lambda x, p: x if p <= 0.2 else not x if p >= 0.8 else False,
+            scorer=lambda x, p: x if p <= 0.05 else not x if p >= 0.95 else False,
         )
         self.looping: BernoulliModel = BernoulliModel(
             src, dest, parent=self, scorer=lambda x, _: x
@@ -108,8 +117,13 @@ class TraceAnalyzer(BaseModel):
         )
 
         self.n_hops_model: PoissonModel = PoissonModel(
-            src, dest, parent=self, threshold=0.05
+            src, dest, parent=self, threshold=0.1
         )
+
+        self.duration_model: NormalModel = NormalModel(
+            src, dest, parent=self, 
+            )
+
         self.trace_model: TraceModel = TraceModel(
             src,
             dest,
@@ -216,6 +230,7 @@ class TraceAnalyzer(BaseModel):
             final_ip_hash,
         )
         n_hops = self.n_hops_model.log(ts, len(data["hops"]))
+        duration = self.duration_model.log(ts, sum(data["rtts"]))
 
         anomalies = AnomalyReport(
             ip_model_anomaly=ip_model_output.is_anomaly,

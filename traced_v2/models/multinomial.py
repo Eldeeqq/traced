@@ -117,7 +117,7 @@ class MultinomialModel(BaseModel, Visual):
         # else:
         #     gdf["probabilities"].plot(ax=ax, label=i, marker="o")
         anomalies = df[df["anomalies"]]
-        if anomalies.shape[0]:
+        if anomalies.shape[0] and not kwargs.get("hide_anomalies", False):
             anomalies.plot(
                 marker="x",
                 linestyle="None",

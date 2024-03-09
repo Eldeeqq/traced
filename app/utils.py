@@ -1448,8 +1448,8 @@ def plot_all_anomalies():
     mode = "stack" if stacked else "group"
     X = (
         df[["timestamp", "value", "anomaly"]]
-        .groupby("anomaly")
-        .resample(period, on="timestamp")
+        .groupby(["anomaly", pd.Grouper(key="timestamp", freq=period)])
+        # .resample(period, on="timestamp")
         .sum(numeric_only=True)
         .reset_index()
     )
